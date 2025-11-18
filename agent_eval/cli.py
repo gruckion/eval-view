@@ -11,6 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from agent_eval.core.loader import TestCaseLoader
 from agent_eval.adapters.http_adapter import HTTPAdapter
+from agent_eval.adapters.tapescope_adapter import TapeScopeAdapter
 from agent_eval.evaluators.evaluator import Evaluator
 from agent_eval.reporters.json_reporter import JSONReporter
 from agent_eval.reporters.console_reporter import ConsoleReporter
@@ -123,12 +124,20 @@ async def _run_async(pattern: str, output: str):
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    # Initialize adapter
-    adapter = HTTPAdapter(
-        endpoint=config["endpoint"],
-        headers=config.get("headers", {}),
-        timeout=config.get("timeout", 30.0),
-    )
+    # Initialize adapter based on type
+    adapter_type = config.get("adapter", "http")
+    if adapter_type == "tapescope" or adapter_type == "streaming":
+        adapter = TapeScopeAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 60.0),
+        )
+    else:
+        adapter = HTTPAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 30.0),
+        )
 
     # Initialize evaluator
     evaluator = Evaluator(openai_api_key=os.getenv("OPENAI_API_KEY"))

@@ -1,0 +1,26 @@
+name: "TapeScope Stock Analysis Test"
+description: "Test TapeScope AI agent's ability to analyze stock performance"
+
+input:
+  query: "Analyze AAPL stock performance and provide key insights"
+  context:
+    route: "orchestrator"  # Use orchestrator route for multi-step analysis
+
+expected:
+  tools:
+    - fetch_stock_data
+    - analyze_fundamentals
+    - market_sentiment
+  output:
+    contains:
+      - "Apple"
+      - "stock"
+      - "performance"
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 75
+  max_cost: 1.00
+  max_latency: 10000
