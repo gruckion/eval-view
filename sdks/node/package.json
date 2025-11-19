@@ -1,0 +1,27 @@
+{
+  "name": "@agent-eval/node",
+  "version": "0.1.0",
+  "description": "Drop-in Node.js middleware for AgentEval testing framework",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublish": "npm run build"
+  },
+  "keywords": [
+    "agent-eval",
+    "testing",
+    "ai-agents",
+    "middleware"
+  ],
+  "author": "AgentEval",
+  "license": "MIT",
+  "peerDependencies": {
+    "next": ">=13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

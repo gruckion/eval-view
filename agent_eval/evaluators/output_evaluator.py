@@ -121,15 +121,30 @@ Return a JSON object with:
         if test_case.expected.output and test_case.expected.output.contains:
             user_content["expected_contains"] = test_case.expected.output.contains
 
-        response = await self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
+        # Use EVAL_MODEL from env (defaults to gpt-4o-mini for backwards compatibility)
+        model = os.getenv("EVAL_MODEL", "gpt-4o-mini")
+
+        # GPT-5 models require temperature=1 and max_completion_tokens
+        # GPT-4 models use temperature=0.3 and max_tokens
+        is_gpt5 = model.startswith("gpt-5")
+
+        params = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_content, indent=2)},
             ],
-            response_format={"type": "json_object"},
-            temperature=0.3,
-        )
+            "response_format": {"type": "json_object"},
+            "temperature": 1 if is_gpt5 else 0.3,
+        }
+
+        # GPT-5 uses max_completion_tokens, GPT-4 uses max_tokens
+        if is_gpt5:
+            params["max_completion_tokens"] = 5000
+        else:
+            params["max_tokens"] = 1000
+
+        response = await self.client.chat.completions.create(**params)
 
         result = json.loads(response.choices[0].message.content or "{}")
         return {

@@ -1,0 +1,97 @@
+# @agent-eval/node
+
+Drop-in Node.js/Next.js middleware for [AgentEval](https://github.com/hidai25/EvalView) testing framework.
+
+## Installation
+
+```bash
+npm install @agent-eval/node
+```
+
+## Quick Start
+
+### Next.js App Router
+
+```typescript
+// app/api/agenteval/route.ts
+import { createAgentEvalMiddleware } from '@agent-eval/node';
+
+export const POST = createAgentEvalMiddleware({
+  targetEndpoint: '/api/unifiedchat',  // Your agent's endpoint
+});
+```
+
+### Express.js
+
+```javascript
+const { createAgentEvalMiddleware } = require('@agent-eval/node');
+
+app.post('/api/agenteval', createAgentEvalMiddleware({
+  targetEndpoint: '/api/your-agent',
+}));
+```
+
+## Configuration
+
+```typescript
+createAgentEvalMiddleware({
+  // Required: Endpoint to forward requests to
+  targetEndpoint: '/api/unifiedchat',
+
+  // Optional: Default user ID for test requests (defaults to 'agenteval-test-user')
+  // Use an existing user ID from your database
+  defaultUserId: 'your-dev-user-id',
+
+  // Optional: Dynamic user ID resolution
+  // Useful for creating users on-the-fly or looking up existing ones
+  getUserId: async (req) => {
+    // Example: Look up or create user
+    const user = await findOrCreateUser('test@example.com');
+    return user.id;
+  },
+
+  // Optional: Transform AgentEval request to your API format
+  transformRequest: (req) => ({
+    message: req.query,
+    userId: req.context?.userId, // Automatically set by middleware
+    // ... your custom mapping
+  }),
+
+  // Optional: Parse your API response to AgentEval format
+  parseResponse: (responseText, startTime) => ({
+    session_id: `session-${startTime}`,
+    output: '...',
+    steps: [...],
+    cost: 0.05,
+    latency: Date.now() - startTime,
+  }),
+
+  // Optional: Base URL for requests
+  baseUrl: process.env.API_BASE_URL,
+});
+```
+
+## Default Behavior
+
+Works out-of-the-box with Tapescope-style APIs that:
+- Accept: `{ message, userId, conversationId, route, history }`
+- Return: NDJSON stream with `tool_call` and `message_complete` events
+
+## Testing
+
+Point AgentEval CLI to your endpoint:
+
+```yaml
+# .agenteval/config.yaml
+adapter: http
+endpoint: http://localhost:3000/api/agenteval
+```
+
+Then run tests:
+```bash
+agent-eval run
+```
+
+## License
+
+MIT
