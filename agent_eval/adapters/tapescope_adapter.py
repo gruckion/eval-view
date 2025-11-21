@@ -6,6 +6,7 @@ import httpx
 import json
 import logging
 import os
+import asyncio
 from agent_eval.adapters.base import AgentAdapter
 from agent_eval.core.types import (
     ExecutionTrace,
@@ -83,6 +84,34 @@ class TapeScopeAdapter(AgentAdapter):
         self, query: str, context: Optional[Dict[str, Any]] = None
     ) -> ExecutionTrace:
         """Execute agent via TapeScope API and capture trace."""
+        try:
+            # Wrap entire execution with timeout to prevent infinite waits
+            return await asyncio.wait_for(
+                self._execute_internal(query, context),
+                timeout=self.timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Request timed out after {self.timeout}s")
+            # Return trace with timeout error
+            return ExecutionTrace(
+                session_id=f"timeout-{int(datetime.now().timestamp())}",
+                start_time=datetime.now(),
+                end_time=datetime.now(),
+                steps=[],
+                final_output=f"Error: Request timed out after {self.timeout} seconds. "
+                             f"Backend may be stuck in refinement loops or processing. "
+                             f"Check backend logs and consider reducing complexity.",
+                metrics=ExecutionMetrics(
+                    total_cost=0.0,
+                    total_latency=self.timeout * 1000,
+                    total_tokens=None,
+                ),
+            )
+
+    async def _execute_internal(
+        self, query: str, context: Optional[Dict[str, Any]] = None
+    ) -> ExecutionTrace:
+        """Internal execution logic (wrapped by timeout)."""
         start_time = datetime.now()
 
         # Default context if not provided

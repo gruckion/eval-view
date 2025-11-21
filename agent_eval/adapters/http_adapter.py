@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, Optional, Dict, List
 import httpx
+import logging
 from agent_eval.adapters.base import AgentAdapter
 from agent_eval.core.types import (
     ExecutionTrace,
@@ -12,6 +13,8 @@ from agent_eval.core.types import (
     TokenUsage,
 )
 from agent_eval.core.pricing import calculate_cost
+
+logger = logging.getLogger(__name__)
 
 
 class HTTPAdapter(AgentAdapter):
@@ -74,15 +77,69 @@ class HTTPAdapter(AgentAdapter):
         """
         Parse HTTP response into ExecutionTrace.
 
+        Supports multiple response formats:
+        - Flat: {"response": "...", "cost": 0.05, "tokens": 1500}
+        - Nested: {"response": "...", "metadata": {"cost": 0.05, "tokens": {...}}}
+        - Steps: {"output": "...", "steps": [...]}
+
         Override this method in subclasses for custom response formats.
         """
         session_id = data.get("session_id", f"session-{int(start_time.timestamp())}")
         steps = self._parse_steps(data.get("steps", []))
-        final_output = data.get("output", data.get("result", ""))
 
+        # Extract output from various common fields
+        final_output = (
+            data.get("response") or
+            data.get("output") or
+            data.get("result") or
+            data.get("answer") or
+            ""
+        )
+
+        # Extract metadata from various locations
+        metadata = data.get("metadata", data.get("meta", {}))
+
+        # Calculate latency
         total_latency = (end_time - start_time).total_seconds() * 1000
-        total_cost = data.get("cost", sum(step.metrics.cost for step in steps))
-        total_tokens = data.get("tokens", sum(step.metrics.tokens or 0 for step in steps))
+
+        # Extract cost (check multiple locations)
+        total_cost = (
+            data.get("cost") or
+            metadata.get("cost") or
+            sum(step.metrics.cost for step in steps) or
+            0.0
+        )
+
+        # Extract tokens (check multiple locations and formats)
+        tokens_data = data.get("tokens") or metadata.get("tokens")
+        total_tokens = None
+
+        if tokens_data:
+            if isinstance(tokens_data, dict):
+                # Nested format: {"input": 100, "output": 500, "cached": 50}
+                total_tokens = TokenUsage(
+                    input_tokens=tokens_data.get("input", tokens_data.get("input_tokens", 0)),
+                    output_tokens=tokens_data.get("output", tokens_data.get("output_tokens", 0)),
+                    cached_tokens=tokens_data.get("cached", tokens_data.get("cached_tokens", 0)),
+                )
+            elif isinstance(tokens_data, int):
+                # Simple total: {"tokens": 1500}
+                total_tokens = TokenUsage(
+                    input_tokens=0,
+                    output_tokens=tokens_data,
+                    cached_tokens=0,
+                )
+
+        # If tokens provided but no cost, calculate it
+        if total_tokens and total_tokens.total_tokens > 0 and total_cost == 0.0:
+            model_name = self.model_config.get("name", "gpt-4")
+            total_cost = calculate_cost(
+                model_name=model_name,
+                input_tokens=total_tokens.input_tokens,
+                output_tokens=total_tokens.output_tokens,
+                cached_tokens=total_tokens.cached_tokens,
+            )
+            logger.info(f"💰 Calculated cost from tokens: ${total_cost:.4f} ({model_name})")
 
         return ExecutionTrace(
             session_id=session_id,

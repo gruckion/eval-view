@@ -1,11 +1,14 @@
 """Cost threshold evaluator."""
 
+import logging
 from agent_eval.core.types import (
     TestCase,
     ExecutionTrace,
     CostEvaluation,
     CostBreakdown,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CostEvaluator:
@@ -24,6 +27,15 @@ class CostEvaluator:
         """
         total_cost = trace.metrics.total_cost
         threshold = test_case.thresholds.max_cost or float("inf")
+
+        # Warn if cost tracking isn't working
+        if total_cost == 0.0 and trace.metrics.total_tokens is None:
+            logger.warning(
+                "⚠️  Cost tracking shows $0.00. Your agent may not be emitting cost data.\n"
+                "   For streaming agents: emit {'type': 'usage', 'data': {...}} events\n"
+                "   For REST agents: include 'cost' or 'tokens' in response metadata\n"
+                "   See docs/BACKEND_REQUIREMENTS.md for details"
+            )
 
         # Build breakdown by step
         breakdown = [
