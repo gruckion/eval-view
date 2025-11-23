@@ -15,6 +15,9 @@ from evalview.core.loader import TestCaseLoader
 from evalview.core.pricing import MODEL_PRICING, get_model_pricing_info
 from evalview.adapters.http_adapter import HTTPAdapter
 from evalview.adapters.tapescope_adapter import TapeScopeAdapter
+from evalview.adapters.langgraph_adapter import LangGraphAdapter
+from evalview.adapters.crewai_adapter import CrewAIAdapter
+from evalview.adapters.openai_assistants_adapter import OpenAIAssistantsAdapter
 from evalview.evaluators.evaluator import Evaluator
 from evalview.reporters.json_reporter import JSONReporter
 from evalview.reporters.console_reporter import ConsoleReporter
@@ -237,7 +240,32 @@ async def _run_async(pattern: str, output: str, verbose: bool):
 
     # Initialize adapter based on type
     adapter_type = config.get("adapter", "http")
-    if adapter_type in ["streaming", "tapescope", "jsonl"]:
+
+    if adapter_type == "langgraph":
+        adapter = LangGraphAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 30.0),
+            streaming=config.get("streaming", False),
+            verbose=verbose,
+            model_config=model_config,
+        )
+    elif adapter_type == "crewai":
+        adapter = CrewAIAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 120.0),
+            verbose=verbose,
+            model_config=model_config,
+        )
+    elif adapter_type == "openai-assistants":
+        adapter = OpenAIAssistantsAdapter(
+            assistant_id=config.get("assistant_id"),
+            timeout=config.get("timeout", 120.0),
+            verbose=verbose,
+            model_config=model_config,
+        )
+    elif adapter_type in ["streaming", "tapescope", "jsonl"]:
         # Streaming adapter supports JSONL streaming APIs
         # (tapescope/jsonl are aliases for backward compatibility)
         adapter = TapeScopeAdapter(
@@ -390,20 +418,22 @@ async def _connect_async(endpoint: Optional[str]):
 
     console.print("[blue]🔍 Testing agent connection...[/blue]\n")
 
-    # Common endpoints to try
+    # Common endpoints to try (framework_type, name, url, adapter_type)
     common_endpoints = [
-        ("LangGraph", "http://localhost:8000/api/chat"),
-        ("LangGraph (alt)", "http://localhost:8000/invoke"),
-        ("LangServe", "http://localhost:8000/agent"),
-        ("TapeScope", "http://localhost:3000/api/unifiedchat"),
-        ("Custom FastAPI", "http://localhost:8000/api/agent"),
-        ("Custom Express", "http://localhost:3000/api/agent"),
+        ("langgraph", "LangGraph", "http://localhost:8000/api/chat", "langgraph"),
+        ("langgraph", "LangGraph (invoke)", "http://localhost:8000/invoke", "langgraph"),
+        ("http", "LangServe", "http://localhost:8000/agent", "http"),
+        ("streaming", "LangServe (stream)", "http://localhost:8000/agent/stream", "streaming"),
+        ("streaming", "TapeScope", "http://localhost:3000/api/unifiedchat", "streaming"),
+        ("crewai", "CrewAI", "http://localhost:8000/crew", "crewai"),
+        ("http", "Custom FastAPI", "http://localhost:8000/api/agent", "http"),
+        ("http", "Custom Express", "http://localhost:3000/api/agent", "http"),
     ]
 
     endpoints_to_test = []
     if endpoint:
-        # User provided specific endpoint
-        endpoints_to_test = [("Custom", endpoint)]
+        # User provided specific endpoint - try to detect adapter type
+        endpoints_to_test = [("http", "Custom", endpoint, "http")]
     else:
         # Try common ones
         endpoints_to_test = common_endpoints
@@ -411,20 +441,34 @@ async def _connect_async(endpoint: Optional[str]):
     successful = None
 
     async with httpx.AsyncClient(timeout=5.0) as client:
-        for name, url in endpoints_to_test:
+        for adapter_type, name, url, default_adapter in endpoints_to_test:
             try:
                 console.print(f"[dim]Testing {name}: {url}...[/dim]", end=" ")
 
                 # Try a simple POST request
                 response = await client.post(
                     url,
-                    json={"query": "test", "message": "test"},
+                    json={"query": "test", "message": "test", "messages": [{"role": "user", "content": "test"}]},
                     headers={"Content-Type": "application/json"},
                 )
 
                 if response.status_code in [200, 201, 422]:  # 422 might be validation error but server is running
+                    # Try to detect framework from response
+                    detected_adapter = default_adapter
+                    try:
+                        if response.headers.get('content-type', '').startswith('application/json'):
+                            data = response.json()
+                            # LangGraph detection
+                            if "messages" in data or "thread_id" in data:
+                                detected_adapter = "langgraph"
+                            # CrewAI detection
+                            elif "tasks" in data or "crew_id" in data:
+                                detected_adapter = "crewai"
+                    except:
+                        pass
+
                     console.print(f"[green]✅ Connected![/green]")
-                    successful = (name, url, response)
+                    successful = (name, url, response, detected_adapter)
                     break
                 else:
                     console.print(f"[yellow]❌ HTTP {response.status_code}[/yellow]")
@@ -439,13 +483,14 @@ async def _connect_async(endpoint: Optional[str]):
     console.print()
 
     if successful:
-        name, url, response = successful
+        name, url, response, detected_adapter = successful
         console.print(f"[green]✅ Successfully connected to {name}![/green]\n")
 
         # Show response info
         console.print("[cyan]Response details:[/cyan]")
         console.print(f"  • Status: {response.status_code}")
         console.print(f"  • Content-Type: {response.headers.get('content-type', 'N/A')}")
+        console.print(f"  • Detected adapter: {detected_adapter}")
 
         # Try to show response preview
         try:
@@ -467,19 +512,15 @@ async def _connect_async(endpoint: Optional[str]):
             with open(config_path) as f:
                 config = yaml.safe_load(f)
 
-            # Determine adapter type
-            is_streaming = "stream" in url.lower() or name == "TapeScope"
-            adapter_type = "streaming" if is_streaming else "http"
-
-            # Update config
-            config["adapter"] = adapter_type
+            # Update config with detected adapter
+            config["adapter"] = detected_adapter
             config["endpoint"] = url
 
             with open(config_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
             console.print(f"[green]✅ Updated config:[/green]")
-            console.print(f"  • adapter: {adapter_type}")
+            console.print(f"  • adapter: {detected_adapter}")
             console.print(f"  • endpoint: {url}")
             console.print()
             console.print("[blue]Next steps:[/blue]")
