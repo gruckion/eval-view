@@ -58,6 +58,11 @@ class TestCase(BaseModel):
     expected: ExpectedBehavior
     thresholds: Thresholds
 
+    # Optional: Override global adapter/endpoint for this test
+    adapter: Optional[str] = None  # e.g., "langgraph", "tapescope", "http"
+    endpoint: Optional[str] = None  # e.g., "http://127.0.0.1:2024"
+    adapter_config: Optional[Dict[str, Any]] = None  # Additional adapter settings
+
 
 # ============================================================================
 # Execution Trace Types

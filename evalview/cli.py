@@ -199,6 +199,17 @@ thresholds:
     help="Test case file pattern (default: *.yaml)",
 )
 @click.option(
+    "--test",
+    "-t",
+    multiple=True,
+    help="Specific test name(s) to run (can specify multiple: -t test1 -t test2)",
+)
+@click.option(
+    "--filter",
+    "-f",
+    help="Filter tests by name pattern (e.g., 'LangGraph*', '*simple*')",
+)
+@click.option(
     "--output",
     default=".evalview/results",
     help="Output directory for results",
@@ -208,13 +219,15 @@ thresholds:
     is_flag=True,
     help="Enable verbose logging (shows API requests/responses)",
 )
-def run(pattern: str, output: str, verbose: bool):
+def run(pattern: str, test: tuple, filter: str, output: str, verbose: bool):
     """Run test cases against the agent."""
-    asyncio.run(_run_async(pattern, output, verbose))
+    asyncio.run(_run_async(pattern, test, filter, output, verbose))
 
 
-async def _run_async(pattern: str, output: str, verbose: bool):
+async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbose: bool):
     """Async implementation of run command."""
+    import fnmatch
+
     if verbose:
         console.print("[dim]🔍 Verbose mode enabled[/dim]\n")
 
@@ -300,7 +313,92 @@ async def _run_async(pattern: str, output: str, verbose: bool):
         console.print(f"[yellow]⚠️  No test cases found matching pattern: {pattern}[/yellow]")
         return
 
+    # Filter test cases by name if --test or --filter specified
+    if test or filter:
+        original_count = len(test_cases)
+        filtered_cases = []
+
+        for test_case in test_cases:
+            # Check if test name is in the --test list
+            if test and test_case.name in test:
+                filtered_cases.append(test_case)
+                continue
+
+            # Check if test name matches --filter pattern
+            if filter and fnmatch.fnmatch(test_case.name, filter):
+                filtered_cases.append(test_case)
+                continue
+
+        test_cases = filtered_cases
+
+        if not test_cases:
+            console.print(f"[yellow]⚠️  No test cases matched the filter criteria[/yellow]")
+            return
+
+        if verbose:
+            console.print(f"[dim]Filtered {original_count} → {len(test_cases)} test(s)[/dim]\n")
+
     console.print(f"Found {len(test_cases)} test case(s)\n")
+
+    # Helper function to get adapter for a test case
+    def get_adapter_for_test(test_case):
+        """Get adapter for test case - use test-specific if specified, otherwise global."""
+        # If test specifies its own adapter, create it
+        if test_case.adapter and test_case.endpoint:
+            test_adapter_type = test_case.adapter
+            test_endpoint = test_case.endpoint
+            test_config = test_case.adapter_config or {}
+
+            if verbose:
+                console.print(f"[dim]  Using test-specific adapter: {test_adapter_type} @ {test_endpoint}[/dim]")
+
+            # Create adapter based on type
+            if test_adapter_type == "langgraph":
+                return LangGraphAdapter(
+                    endpoint=test_endpoint,
+                    headers=test_config.get("headers", {}),
+                    timeout=test_config.get("timeout", 30.0),
+                    streaming=test_config.get("streaming", False),
+                    verbose=verbose,
+                    model_config=model_config,
+                    assistant_id=test_config.get("assistant_id", "agent"),
+                )
+            elif test_adapter_type == "crewai":
+                return CrewAIAdapter(
+                    endpoint=test_endpoint,
+                    headers=test_config.get("headers", {}),
+                    timeout=test_config.get("timeout", 120.0),
+                    verbose=verbose,
+                    model_config=model_config,
+                )
+            elif test_adapter_type == "openai-assistants":
+                return OpenAIAssistantsAdapter(
+                    assistant_id=test_config.get("assistant_id"),
+                    api_key=test_config.get("api_key"),
+                    verbose=verbose,
+                    model_config=model_config,
+                )
+            elif test_adapter_type == "tapescope":
+                return TapeScopeAdapter(
+                    endpoint=test_endpoint,
+                    headers=test_config.get("headers", {}),
+                    timeout=test_config.get("timeout", 120.0),
+                    streaming=test_config.get("streaming", True),
+                    verbose=verbose,
+                    model_config=model_config,
+                )
+            else:  # Default to HTTP adapter
+                return HTTPAdapter(
+                    endpoint=test_endpoint,
+                    headers=test_config.get("headers", {}),
+                    timeout=test_config.get("timeout", 30.0),
+                    streaming=test_config.get("streaming", False),
+                    verbose=verbose,
+                    model_config=model_config,
+                )
+
+        # Use global adapter
+        return adapter
 
     # Run evaluations
     results = []
@@ -316,8 +414,11 @@ async def _run_async(pattern: str, output: str, verbose: bool):
             task = progress.add_task(f"Running {test_case.name}...", total=None)
 
             try:
+                # Get adapter for this test (test-specific or global)
+                test_adapter = get_adapter_for_test(test_case)
+
                 # Execute agent
-                trace = await adapter.execute(test_case.input.query, test_case.input.context)
+                trace = await test_adapter.execute(test_case.input.query, test_case.input.context)
 
                 # Evaluate
                 result = await evaluator.evaluate(test_case, trace)
@@ -370,6 +471,67 @@ async def _run_async(pattern: str, output: str, verbose: bool):
     JSONReporter.save(results, results_file)
 
     console.print(f"\n[dim]Results saved to: {results_file}[/dim]\n")
+
+
+@main.command()
+@click.option(
+    "--pattern",
+    default="*.yaml",
+    help="Test case file pattern (default: *.yaml)",
+)
+@click.option(
+    "--detailed",
+    is_flag=True,
+    help="Show detailed information for each test",
+)
+def list(pattern: str, detailed: bool):
+    """List all available test cases."""
+    asyncio.run(_list_async(pattern, detailed))
+
+
+async def _list_async(pattern: str, detailed: bool):
+    """Async implementation of list command."""
+    from rich.table import Table
+
+    console.print("[blue]Loading test cases...[/blue]\n")
+
+    # Load test cases
+    test_dir = Path("tests/test-cases")
+    if not test_dir.exists():
+        console.print(f"[yellow]Test directory not found: {test_dir}[/yellow]")
+        return
+
+    loader = TestCaseLoader()
+    test_cases = loader.load_from_directory(test_dir, pattern=pattern)
+
+    if not test_cases:
+        console.print(f"[yellow]No test cases found matching pattern: {pattern}[/yellow]")
+        return
+
+    console.print(f"[green]Found {len(test_cases)} test case(s)[/green]\n")
+
+    # Create table
+    table = Table(title="Available Test Cases", show_header=True, header_style="bold cyan")
+    table.add_column("Name", style="white", no_wrap=False)
+    table.add_column("Adapter", style="yellow", justify="center")
+    table.add_column("Endpoint", style="dim", no_wrap=False)
+
+    if detailed:
+        table.add_column("Description", style="dim", no_wrap=False)
+
+    # Add rows
+    for test_case in test_cases:
+        adapter_name = test_case.adapter or "[dim](from config)[/dim]"
+        endpoint = test_case.endpoint or "[dim](from config)[/dim]"
+
+        if detailed:
+            description = test_case.description or "[dim]No description[/dim]"
+            table.add_row(test_case.name, adapter_name, endpoint, description)
+        else:
+            table.add_row(test_case.name, adapter_name, endpoint)
+
+    console.print(table)
+    console.print()
 
 
 @main.command()
