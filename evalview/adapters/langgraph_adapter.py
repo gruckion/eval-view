@@ -115,6 +115,7 @@ class LangGraphAdapter(AgentAdapter):
 
             steps: List[StepTrace] = []
             final_output = ""
+            current_event = None  # Track SSE event type
 
             async with client.stream(
                 "POST",
@@ -125,37 +126,79 @@ class LangGraphAdapter(AgentAdapter):
                 response.raise_for_status()
 
                 async for line in response.aiter_lines():
-                    if not line or line.startswith("event:"):
+                    if not line:
                         continue
 
+                    # Track event type (SSE format: "event: <type>")
+                    if line.startswith("event: "):
+                        current_event = line[7:].strip()
+                        if self.verbose:
+                            logger.debug(f"📡 SSE Event: {current_event}")
+                        continue
+
+                    # Parse data line (SSE format: "data: <json>")
                     if line.startswith("data: "):
                         try:
                             data = json.loads(line[6:])
 
-                            # Extract messages from streaming data
-                            if isinstance(data, list) and len(data) > 0:
-                                last_item = data[-1]
-                                if "messages" in last_item:
-                                    messages = last_item["messages"]
+                            if self.verbose:
+                                logger.debug(f"📦 Data ({current_event}): {json.dumps(data)[:200]}")
+
+                            # Extract final output from "values" or "updates" events
+                            if current_event in ("values", "updates"):
+                                # "values" event: data = {"messages": [...]}
+                                if isinstance(data, dict) and "messages" in data:
+                                    messages = data["messages"]
                                     if messages and isinstance(messages, list):
                                         last_msg = messages[-1]
                                         if isinstance(last_msg, dict):
-                                            final_output = last_msg.get("content", "")
+                                            content = last_msg.get("content", "")
+                                            if content:  # Update if non-empty
+                                                final_output = content
 
-                            # Try to extract tool calls
-                            # LangGraph Cloud may include these in updates
-                            if isinstance(data, dict) and "tool_calls" in data:
-                                for tool_call in data["tool_calls"]:
-                                    step = StepTrace(
-                                        step_id=tool_call.get("id", f"step-{len(steps)}"),
-                                        step_name=tool_call.get("name", "Tool Call"),
-                                        tool_name=tool_call.get("name"),
-                                        parameters=tool_call.get("args", {}),
-                                        output=None,
-                                        success=True,
-                                        metrics=StepMetrics(latency=0.0, cost=0.0),
-                                    )
-                                    steps.append(step)
+                                # "updates" event: data = {"agent": {"messages": [...]}}
+                                if isinstance(data, dict) and "agent" in data:
+                                    agent_data = data["agent"]
+                                    if isinstance(agent_data, dict) and "messages" in agent_data:
+                                        messages = agent_data["messages"]
+                                        if messages and isinstance(messages, list):
+                                            last_msg = messages[-1]
+                                            if isinstance(last_msg, dict):
+                                                content = last_msg.get("content", "")
+                                                if content:
+                                                    final_output = content
+
+                            # Extract tool calls from updates
+                            if isinstance(data, dict):
+                                # Check for tool_calls in data
+                                if "tool_calls" in data:
+                                    for tool_call in data["tool_calls"]:
+                                        step = StepTrace(
+                                            step_id=tool_call.get("id", f"step-{len(steps)}"),
+                                            step_name=tool_call.get("name", "Tool Call"),
+                                            tool_name=tool_call.get("name"),
+                                            parameters=tool_call.get("args", {}),
+                                            output=None,
+                                            success=True,
+                                            metrics=StepMetrics(latency=0.0, cost=0.0),
+                                        )
+                                        steps.append(step)
+
+                                # Check for tool_calls in nested agent data
+                                if "agent" in data and isinstance(data["agent"], dict):
+                                    agent_data = data["agent"]
+                                    if "tool_calls" in agent_data:
+                                        for tool_call in agent_data["tool_calls"]:
+                                            step = StepTrace(
+                                                step_id=tool_call.get("id", f"step-{len(steps)}"),
+                                                step_name=tool_call.get("name", "Tool Call"),
+                                                tool_name=tool_call.get("name"),
+                                                parameters=tool_call.get("args", {}),
+                                                output=None,
+                                                success=True,
+                                                metrics=StepMetrics(latency=0.0, cost=0.0),
+                                            )
+                                            steps.append(step)
 
                         except json.JSONDecodeError:
                             continue
