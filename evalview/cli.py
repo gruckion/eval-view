@@ -219,17 +219,31 @@ thresholds:
     is_flag=True,
     help="Enable verbose logging (shows API requests/responses)",
 )
-def run(pattern: str, test: tuple, filter: str, output: str, verbose: bool):
+@click.option(
+    "--track",
+    is_flag=True,
+    help="Track results for regression analysis",
+)
+@click.option(
+    "--compare-baseline",
+    is_flag=True,
+    help="Compare results against baseline and show regressions",
+)
+def run(pattern: str, test: tuple, filter: str, output: str, verbose: bool, track: bool, compare_baseline: bool):
     """Run test cases against the agent."""
-    asyncio.run(_run_async(pattern, test, filter, output, verbose))
+    asyncio.run(_run_async(pattern, test, filter, output, verbose, track, compare_baseline))
 
 
-async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbose: bool):
+async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbose: bool, track: bool, compare_baseline: bool):
     """Async implementation of run command."""
     import fnmatch
+    from evalview.tracking import RegressionTracker
 
     if verbose:
         console.print("[dim]🔍 Verbose mode enabled[/dim]\n")
+
+    if track or compare_baseline:
+        console.print("[dim]📊 Regression tracking enabled[/dim]\n")
 
     console.print("[blue]Running test cases...[/blue]\n")
 
@@ -300,6 +314,12 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
 
     # Initialize evaluator
     evaluator = Evaluator(openai_api_key=os.getenv("OPENAI_API_KEY"))
+
+    # Initialize tracker if tracking enabled
+    tracker = None
+    regression_reports = {}
+    if track or compare_baseline:
+        tracker = RegressionTracker()
 
     # Load test cases
     test_cases_dir = Path("tests/test-cases")
@@ -436,6 +456,15 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
                 result = await evaluator.evaluate(test_case, trace)
                 results.append(result)
 
+                # Track result and compare to baseline if enabled
+                if tracker:
+                    if track:
+                        tracker.store_result(result)
+
+                    if compare_baseline:
+                        regression_report = tracker.compare_to_baseline(result)
+                        regression_reports[test_case.name] = regression_report
+
                 if result.passed:
                     passed += 1
                     progress.update(
@@ -476,6 +505,68 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
     reporter = ConsoleReporter()
     reporter.print_summary(results)
 
+    # Print regression analysis if enabled
+    if compare_baseline and regression_reports:
+        console.print()
+        console.print("[bold cyan]📊 Regression Analysis[/bold cyan]")
+        console.print("━" * 60)
+        console.print()
+
+        any_regressions = False
+        for test_name, report in regression_reports.items():
+            if report.baseline_score is None:
+                continue  # Skip tests without baselines
+
+            # Color code based on severity
+            if report.is_regression:
+                any_regressions = True
+                if report.severity == "critical":
+                    status = "[red]🔴 CRITICAL REGRESSION[/red]"
+                elif report.severity == "moderate":
+                    status = "[yellow]🟡 MODERATE REGRESSION[/yellow]"
+                else:
+                    status = "[yellow]🟠 MINOR REGRESSION[/yellow]"
+            else:
+                status = "[green]✅ No regression[/green]"
+
+            console.print(f"[bold]{test_name}[/bold]: {status}")
+
+            # Show score comparison
+            if report.score_delta is not None:
+                delta_str = f"{report.score_delta:+.1f}"
+                percent_str = f"({report.score_delta_percent:+.1f}%)"
+                if report.score_delta < 0:
+                    console.print(f"  Score: {report.current_score:.1f} [red]↓ {delta_str}[/red] {percent_str} vs baseline {report.baseline_score:.1f}")
+                else:
+                    console.print(f"  Score: {report.current_score:.1f} [green]↑ {delta_str}[/green] {percent_str} vs baseline {report.baseline_score:.1f}")
+
+            # Show cost comparison
+            if report.cost_delta is not None and report.cost_delta_percent is not None:
+                delta_str = f"${report.cost_delta:+.4f}"
+                percent_str = f"({report.cost_delta_percent:+.1f}%)"
+                if report.cost_delta_percent > 20:
+                    console.print(f"  Cost: ${report.current_cost:.4f} [red]↑ {delta_str}[/red] {percent_str}")
+                else:
+                    console.print(f"  Cost: ${report.current_cost:.4f} {delta_str} {percent_str}")
+
+            # Show latency comparison
+            if report.latency_delta is not None and report.latency_delta_percent is not None:
+                delta_str = f"{report.latency_delta:+.0f}ms"
+                percent_str = f"({report.latency_delta_percent:+.1f}%)"
+                if report.latency_delta_percent > 30:
+                    console.print(f"  Latency: {report.current_latency:.0f}ms [red]↑ {delta_str}[/red] {percent_str}")
+                else:
+                    console.print(f"  Latency: {report.current_latency:.0f}ms {delta_str} {percent_str}")
+
+            # Show specific issues
+            if report.is_regression and report.issues:
+                console.print(f"  Issues: {', '.join(report.issues)}")
+
+            console.print()
+
+        if any_regressions:
+            console.print("[red]⚠️  Regressions detected! Review changes before deploying.[/red]\n")
+
     # Save results
     output_dir = Path(output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -483,6 +574,11 @@ async def _run_async(pattern: str, test: tuple, filter: str, output: str, verbos
     JSONReporter.save(results, results_file)
 
     console.print(f"\n[dim]Results saved to: {results_file}[/dim]\n")
+
+    if track:
+        console.print("[dim]📊 Results tracked for regression analysis[/dim]")
+        console.print("[dim]   View trends: evalview trends[/dim]")
+        console.print("[dim]   Set baseline: evalview baseline set[/dim]\n")
 
 
 @main.command()
@@ -1041,6 +1137,238 @@ async def _record_async(query: Optional[str], output: Optional[str], interactive
 
     console.print()
     console.print("[blue]Run with:[/blue] evalview run\n")
+
+
+@main.group()
+def baseline():
+    """Manage test baselines for regression detection."""
+    pass
+
+
+@baseline.command("set")
+@click.option(
+    "--test",
+    help="Specific test name to set baseline for (default: all recent tests)",
+)
+@click.option(
+    "--from-latest",
+    is_flag=True,
+    help="Set baseline from most recent test run",
+)
+def baseline_set(test: str, from_latest: bool):
+    """Set baseline from recent test results."""
+    from evalview.tracking import RegressionTracker
+
+    tracker = RegressionTracker()
+
+    if test:
+        # Set baseline for specific test
+        if from_latest:
+            try:
+                tracker.set_baseline_from_latest(test)
+                console.print(f"[green]✅ Baseline set for test: {test}[/green]")
+            except ValueError as e:
+                console.print(f"[red]❌ Error: {e}[/red]")
+        else:
+            console.print(
+                "[yellow]⚠️  Must specify --from-latest or run tests first[/yellow]"
+            )
+    else:
+        # Set baselines for all recent tests
+        results = tracker.db.get_recent_results(days=1)
+        unique_tests = set(r["test_name"] for r in results)
+
+        if not unique_tests:
+            console.print(
+                "[yellow]⚠️  No recent test results found. Run tests first.[/yellow]"
+            )
+            return
+
+        for test_name in unique_tests:
+            tracker.set_baseline_from_latest(test_name)
+
+        console.print(f"[green]✅ Baselines set for {len(unique_tests)} test(s)[/green]")
+
+
+@baseline.command("show")
+@click.option(
+    "--test",
+    help="Specific test name to show baseline for",
+)
+def baseline_show(test: str):
+    """Show current baselines."""
+    from evalview.tracking import RegressionTracker
+    from rich.table import Table
+
+    tracker = RegressionTracker()
+
+    if test:
+        # Show specific baseline
+        baseline = tracker.db.get_baseline(test)
+        if not baseline:
+            console.print(f"[yellow]⚠️  No baseline set for test: {test}[/yellow]")
+            return
+
+        console.print(f"\n[bold]Baseline for: {test}[/bold]\n")
+        console.print(f"  Score: {baseline['score']:.2f}")
+        if baseline.get("cost"):
+            console.print(f"  Cost: ${baseline['cost']:.4f}")
+        if baseline.get("latency"):
+            console.print(f"  Latency: {baseline['latency']:.0f}ms")
+        console.print(f"  Created: {baseline['created_at']}")
+        if baseline.get("git_commit"):
+            console.print(f"  Git: {baseline['git_commit']} ({baseline.get('git_branch', 'unknown')})")
+        console.print()
+    else:
+        # Show all baselines
+        # Get all unique test names from results
+        results = tracker.db.get_recent_results(days=30)
+        unique_tests = set(r["test_name"] for r in results)
+
+        table = Table(title="Test Baselines", show_header=True, header_style="bold cyan")
+        table.add_column("Test Name", style="white")
+        table.add_column("Score", justify="right", style="green")
+        table.add_column("Cost", justify="right", style="yellow")
+        table.add_column("Latency", justify="right", style="blue")
+        table.add_column("Created", style="dim")
+
+        has_baselines = False
+        for test_name in sorted(unique_tests):
+            baseline = tracker.db.get_baseline(test_name)
+            if baseline:
+                has_baselines = True
+                table.add_row(
+                    test_name,
+                    f"{baseline['score']:.1f}",
+                    f"${baseline.get('cost', 0):.4f}" if baseline.get("cost") else "N/A",
+                    f"{baseline.get('latency', 0):.0f}ms" if baseline.get("latency") else "N/A",
+                    baseline['created_at'][:10],
+                )
+
+        if not has_baselines:
+            console.print("[yellow]⚠️  No baselines set. Run 'evalview baseline set' first.[/yellow]")
+        else:
+            console.print()
+            console.print(table)
+            console.print()
+
+
+@baseline.command("clear")
+@click.option(
+    "--test",
+    help="Specific test name to clear baseline for",
+)
+@click.confirmation_option(prompt="Are you sure you want to clear baselines?")
+def baseline_clear(test: str):
+    """Clear baselines."""
+    from evalview.tracking import RegressionTracker
+
+    tracker = RegressionTracker()
+
+    if test:
+        # Clear specific baseline (would need to add this to DB class)
+        console.print(f"[yellow]⚠️  Clear specific baseline not yet implemented[/yellow]")
+    else:
+        tracker.db.clear_baselines()
+        console.print("[green]✅ All baselines cleared[/green]")
+
+
+@main.command()
+@click.option(
+    "--days",
+    default=30,
+    help="Number of days to analyze (default: 30)",
+)
+@click.option(
+    "--test",
+    help="Specific test name to show trends for",
+)
+def trends(days: int, test: str):
+    """Show performance trends over time."""
+    from evalview.tracking import RegressionTracker
+    from rich.table import Table
+
+    tracker = RegressionTracker()
+
+    if test:
+        # Show trends for specific test
+        stats = tracker.get_statistics(test, days)
+
+        if stats["total_runs"] == 0:
+            console.print(f"[yellow]⚠️  No data found for test: {test}[/yellow]")
+            return
+
+        console.print(f"\n[bold]Performance Trends: {test}[/bold]")
+        console.print(f"Period: Last {days} days\n")
+
+        console.print(f"[cyan]Test Runs:[/cyan]")
+        console.print(f"  Total: {stats['total_runs']}")
+        console.print(f"  Passed: {stats['passed_runs']} ({stats['pass_rate']:.1f}%)")
+        console.print(f"  Failed: {stats['failed_runs']}")
+
+        if stats["score"]["current"]:
+            console.print(f"\n[cyan]Score:[/cyan]")
+            console.print(f"  Current: {stats['score']['current']:.1f}")
+            console.print(f"  Average: {stats['score']['avg']:.1f}")
+            console.print(
+                f"  Range: {stats['score']['min']:.1f} - {stats['score']['max']:.1f}"
+            )
+
+        if stats["cost"]["current"]:
+            console.print(f"\n[cyan]Cost:[/cyan]")
+            console.print(f"  Current: ${stats['cost']['current']:.4f}")
+            console.print(f"  Average: ${stats['cost']['avg']:.4f}")
+            console.print(
+                f"  Range: ${stats['cost']['min']:.4f} - ${stats['cost']['max']:.4f}"
+            )
+
+        if stats["latency"]["current"]:
+            console.print(f"\n[cyan]Latency:[/cyan]")
+            console.print(f"  Current: {stats['latency']['current']:.0f}ms")
+            console.print(f"  Average: {stats['latency']['avg']:.0f}ms")
+            console.print(
+                f"  Range: {stats['latency']['min']:.0f}ms - {stats['latency']['max']:.0f}ms"
+            )
+
+        console.print()
+
+    else:
+        # Show overall trends
+        daily_trends = tracker.db.get_daily_trends(days)
+
+        if not daily_trends:
+            console.print(f"[yellow]⚠️  No trend data available for last {days} days[/yellow]")
+            return
+
+        console.print(f"\n[bold]Overall Performance Trends[/bold]")
+        console.print(f"Period: Last {days} days\n")
+
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Date", style="white")
+        table.add_column("Avg Score", justify="right", style="green")
+        table.add_column("Avg Cost", justify="right", style="yellow")
+        table.add_column("Avg Latency", justify="right", style="blue")
+        table.add_column("Tests", justify="center", style="dim")
+        table.add_column("Pass Rate", justify="right", style="green")
+
+        for trend in daily_trends[-14:]:  # Show last 14 days
+            pass_rate = (
+                trend["passed_tests"] / trend["total_tests"] * 100
+                if trend["total_tests"] > 0
+                else 0
+            )
+
+            table.add_row(
+                trend["date"],
+                f"{trend['avg_score']:.1f}" if trend["avg_score"] else "N/A",
+                f"${trend['avg_cost']:.4f}" if trend.get("avg_cost") else "N/A",
+                f"{trend['avg_latency']:.0f}ms" if trend.get("avg_latency") else "N/A",
+                str(trend["total_tests"]),
+                f"{pass_rate:.0f}%",
+            )
+
+        console.print(table)
+        console.print()
 
 
 if __name__ == "__main__":
