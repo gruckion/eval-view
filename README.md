@@ -98,11 +98,13 @@ Traditional testing doesn't catch this. EvalView lets you write repeatable tests
 ### Step 1: Install
 
 ```bash
-# Clone and install
+pip install evalview
+```
+
+Or install from source:
+```bash
 git clone https://github.com/hidai25/EvalView.git
 cd EvalView
-python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -e .
 ```
 
@@ -143,12 +145,18 @@ Done! 🎉
 
 ## Installation
 
+**Stable Release (Recommended):**
+```bash
+pip install evalview
+```
+
+**Development Install:**
 ```bash
 # Clone the repository
 git clone https://github.com/hidai25/EvalView.git
 cd EvalView
 
-# Create virtual environment
+# Create virtual environment (optional)
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
