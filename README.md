@@ -436,7 +436,7 @@ evalview run --verbose
 DEBUG=1 evalview run
 ```
 
-See [DEBUGGING.md](DEBUGGING.md) for troubleshooting guide.
+See [docs/DEBUGGING.md](docs/DEBUGGING.md) for troubleshooting guide.
 
 ### `evalview report`
 
@@ -526,7 +526,7 @@ Cached tokens receive a **90% discount** (10% of input price). This applies when
 └──────────────────────┴───────┴─────────┴─────────┴─────────────┴─────────┘
 ```
 
-See [COST_TRACKING.md](COST_TRACKING.md) for detailed implementation guide.
+See [docs/COST_TRACKING.md](docs/COST_TRACKING.md) for detailed implementation guide.
 
 ## Architecture
 
@@ -623,7 +623,7 @@ See [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md) for detailed guides.
 - Run `node scripts/setup-test-user.js` to configure
 - Or see [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md)
 
-**See [DEBUGGING.md](DEBUGGING.md) for detailed troubleshooting guide.**
+**See [docs/DEBUGGING.md](docs/DEBUGGING.md) for detailed troubleshooting guide.**
 
 ## Development
 
@@ -702,6 +702,19 @@ EvalView is production-ready and used by teams building:
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
+
+## Further Reading
+
+| Topic | Description |
+|-------|-------------|
+| [Framework Support](docs/FRAMEWORK_SUPPORT.md) | Supported frameworks and compatibility notes |
+| [Cost Tracking](docs/COST_TRACKING.md) | Token usage and cost calculation details |
+| [Debugging Guide](docs/DEBUGGING.md) | Troubleshooting common issues |
+| [Adapters](docs/ADAPTERS.md) | Building custom adapters for your agent |
+| [LangGraph Cloud](docs/LANGGRAPH_CLOUD.md) | LangGraph Cloud integration status |
+| [Agent Testing](AGENT_TESTING.md) | Framework support matrix and testing plan |
+
+**Internal docs:** [docs/internal/](docs/internal/) - Implementation notes and architecture decisions
 
 ## License
 
