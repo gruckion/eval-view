@@ -781,58 +781,68 @@ async def _connect_async(endpoint: Optional[str]):
         endpoints_to_test = common_endpoints
 
     successful = None
+    tested_count = 0
 
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        for adapter_type, name, url, default_adapter, method in endpoints_to_test:
-            try:
-                console.print(f"[dim]Testing {name}: {url}...[/dim]", end=" ")
+    from rich.progress import Progress, SpinnerColumn, TextColumn
 
-                # Use appropriate HTTP method
-                if method == "GET":
-                    response = await client.get(url)
-                else:
-                    # Try a simple POST request
-                    response = await client.post(
-                        url,
-                        json={
-                            "query": "test",
-                            "message": "test",
-                            "messages": [{"role": "user", "content": "test"}],
-                        },
-                        headers={"Content-Type": "application/json"},
-                    )
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Scanning for agent servers...", total=None)
 
-                if response.status_code in [
-                    200,
-                    201,
-                    422,
-                ]:  # 422 might be validation error but server is running
-                    # Try to detect framework from response
-                    detected_adapter = default_adapter
-                    try:
-                        if response.headers.get("content-type", "").startswith("application/json"):
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            for adapter_type, name, url, default_adapter, method in endpoints_to_test:
+                tested_count += 1
+                progress.update(task, description=f"Scanning... ({tested_count} endpoints checked)")
+
+                try:
+                    # Use appropriate HTTP method
+                    if method == "GET":
+                        response = await client.get(url)
+                    else:
+                        # Try a simple POST request
+                        response = await client.post(
+                            url,
+                            json={
+                                "query": "test",
+                                "message": "test",
+                                "messages": [{"role": "user", "content": "test"}],
+                            },
+                            headers={"Content-Type": "application/json"},
+                        )
+
+                    if response.status_code in [
+                        200,
+                        201,
+                        422,
+                    ]:  # 422 might be validation error but server is running
+                        # Skip non-JSON responses (e.g., macOS AirPlay on port 5000)
+                        content_type = response.headers.get("content-type", "")
+                        if not content_type.startswith("application/json"):
+                            continue
+
+                        # Try to detect framework from response
+                        detected_adapter = default_adapter
+                        try:
                             data = response.json()
                             # LangGraph detection
                             if "messages" in data or "thread_id" in data:
                                 detected_adapter = "langgraph"
-                            # CrewAI detection
-                            elif "tasks" in data or "crew_id" in data:
+                            # CrewAI detection - look for crew-specific fields
+                            # Note: "detail" alone is just a FastAPI validation error, not CrewAI-specific
+                            elif "tasks" in data or "crew_id" in data or "crew" in data:
                                 detected_adapter = "crewai"
-                    except Exception:
-                        pass
+                        except Exception:
+                            continue  # Skip if can't parse JSON
 
-                    console.print("[green]✅ Connected![/green]")
-                    successful = (name, url, response, detected_adapter)
-                    break
-                else:
-                    console.print(f"[yellow]❌ HTTP {response.status_code}[/yellow]")
+                        successful = (name, url, response, detected_adapter)
+                        break
 
-            except httpx.ConnectError:
-                console.print("[red]❌ Connection refused[/red]")
-            except httpx.TimeoutException:
-                console.print("[yellow]❌ Timeout[/yellow]")
-            except Exception as e:
-                console.print(f"[red]❌ {type(e).__name__}[/red]")
+                except (httpx.ConnectError, httpx.TimeoutException, Exception):
+                    continue
 
     console.print()
 
@@ -850,7 +860,10 @@ async def _connect_async(endpoint: Optional[str]):
         try:
             if response.headers.get("content-type", "").startswith("application/json"):
                 data = response.json()
-                console.print(f"  • Response keys: {list(data.keys())}")
+                if data and isinstance(data, dict):
+                    keys_str = ", ".join(str(k) for k in data.keys())
+                    if keys_str:
+                        console.print(f"  • Response keys: [{keys_str}]")
         except Exception:
             pass
 
@@ -886,6 +899,7 @@ async def _connect_async(endpoint: Optional[str]):
             console.print("[blue]Next steps:[/blue]")
             console.print("  1. Create test cases in tests/test-cases/")
             console.print("  2. Run: evalview run --verbose")
+        return  # Exit after successful connection
     else:
         console.print("[red]❌ Could not connect to any agent endpoint.[/red]\n")
 
@@ -907,17 +921,28 @@ async def _connect_async(endpoint: Optional[str]):
 
         if open_ports:
             console.print()
-            console.print(f"[yellow]Found {len(open_ports)} open port(s)![/yellow]")
-            console.print("[blue]Try connecting to one of these manually:[/blue]")
-            for port in open_ports:
-                console.print(f"  evalview connect --endpoint http://127.0.0.1:{port}/api/chat")
+            console.print(f"[green]Found {len(open_ports)} open port(s)![/green]")
             console.print()
 
-            if click.confirm("Do you want to try a custom endpoint?", default=True):
+            if click.confirm("Configure connection manually?", default=True):
                 custom_port = click.prompt(
-                    "Enter port number", type=int, default=open_ports[0] if open_ports else 8000
+                    "Port number", type=int, default=open_ports[0] if open_ports else 8000
                 )
-                custom_path = click.prompt("Enter endpoint path", default="/api/chat")
+
+                # Suggest common paths based on framework
+                console.print("\n[cyan]Common endpoint paths:[/cyan]")
+                console.print("  1. /crew         (CrewAI)")
+                console.print("  2. /invoke       (LangGraph/LangServe)")
+                console.print("  3. /api/chat     (Generic)")
+                console.print("  4. Custom path")
+
+                path_choice = click.prompt("Choose (1-4)", type=int, default=1)
+                path_map = {1: "/crew", 2: "/invoke", 3: "/api/chat"}
+
+                if path_choice == 4:
+                    custom_path = click.prompt("Enter custom path", default="/api/chat")
+                else:
+                    custom_path = path_map.get(path_choice, "/api/chat")
                 custom_url = f"http://127.0.0.1:{custom_port}{custom_path}"
 
                 console.print(f"\n[cyan]Testing {custom_url}...[/cyan]")
@@ -943,7 +968,7 @@ async def _connect_async(endpoint: Optional[str]):
                                 data = response.json()
                                 if "messages" in data or "thread_id" in data:
                                     detected_adapter = "langgraph"
-                                elif "tasks" in data or "crew_id" in data:
+                                elif "tasks" in data or "crew_id" in data or "crew" in data:
                                     detected_adapter = "crewai"
                             except Exception:
                                 pass

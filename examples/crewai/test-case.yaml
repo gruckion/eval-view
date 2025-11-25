@@ -1,33 +1,32 @@
-# EvalView Test Case: CrewAI Content Team
-# Tests a multi-agent crew for content creation
+# EvalView Test Case: CrewAI Stock Analysis
+# Tests a multi-agent crew for stock analysis
 
-name: "CrewAI Content Team"
-description: "Test multi-agent collaboration for content creation"
+name: "CrewAI Stock Analysis"
+description: "Test multi-agent collaboration for stock analysis"
 
 # Configure adapter for CrewAI
 adapter: crewai
-endpoint: http://localhost:8000
+endpoint: http://localhost:8000/crew
 
 input:
-  query: "Write a blog post about the benefits of AI agents in business automation"
+  query: "Analyze Apple (AAPL) stock for investment potential"
   context:
-    topic: "AI agents"
-    format: "blog post"
+    ticker: "AAPL"
+    analysis_type: "comprehensive"
 
 expected:
   tools:
-    - research_tool
-    - write_tool
-    - edit_tool
+    - ScrapeWebsiteTool
+    - WebsiteSearchTool
+    - CalculatorTool
   output:
     contains:
-      - "automation"
-      - "efficiency"
-      - "AI"
+      - "Apple"
+      - "AAPL"
     not_contains:
       - "error"
 
 thresholds:
-  min_score: 75
+  min_score: 70
   max_cost: 1.00
-  max_latency: 60000
+  max_latency: 120000  # 2 minutes - multi-agent can be slow
