@@ -34,6 +34,8 @@ class TestEvaluator:
         """Test complete evaluation when all criteria pass."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
+        evaluator.hallucination_evaluator.client = mock_openai_client
+        evaluator.safety_evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(sample_test_case, sample_execution_trace)
 
@@ -51,6 +53,8 @@ class TestEvaluator:
         """Test that all sub-evaluators are run."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
+        evaluator.hallucination_evaluator.client = mock_openai_client
+        evaluator.safety_evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(sample_test_case, sample_execution_trace)
 
@@ -328,6 +332,8 @@ class TestEvaluator:
         """Test evaluation with score exactly at threshold."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
+        evaluator.hallucination_evaluator.client = mock_openai_client
+        evaluator.safety_evaluator.client = mock_openai_client
 
         test_case = TestCase(
             name="test",
@@ -368,6 +374,8 @@ class TestEvaluator:
         """Test that score is properly rounded to 2 decimal places."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
+        evaluator.hallucination_evaluator.client = mock_openai_client
+        evaluator.safety_evaluator.client = mock_openai_client
 
         test_case = TestCase(
             name="test",
@@ -406,6 +414,8 @@ class TestEvaluator:
         """Test evaluation when cost/latency thresholds are not specified."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
+        evaluator.hallucination_evaluator.client = mock_openai_client
+        evaluator.safety_evaluator.client = mock_openai_client
 
         test_case = TestCase(
             name="test",

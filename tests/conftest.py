@@ -242,6 +242,16 @@ def mock_openai_client() -> AsyncMock:
         )
     ]
     mock_client.chat.completions.create.return_value = mock_response
+
+    # Mock moderation API for safety evaluator
+    mock_moderation_response = MagicMock()
+    mock_moderation_result = MagicMock()
+    mock_moderation_result.flagged = False
+    mock_moderation_result.categories = MagicMock()
+    mock_moderation_result.categories.model_dump.return_value = {}
+    mock_moderation_response.results = [mock_moderation_result]
+    mock_client.moderations.create.return_value = mock_moderation_response
+
     return mock_client
 
 
@@ -362,12 +372,5 @@ thresholds:
 # Async Testing Utilities
 # ============================================================================
 
-
-@pytest.fixture
-def event_loop():
-    """Create an event loop for async tests."""
-    import asyncio
-
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+# Note: event_loop fixture removed - pytest-asyncio with asyncio_mode=auto
+# handles this automatically. The custom fixture is deprecated in pytest-asyncio >= 0.23

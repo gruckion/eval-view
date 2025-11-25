@@ -1,7 +1,7 @@
 """Hallucination detection evaluator."""
 
 import os
-from typing import Optional
+from typing import Optional, Tuple, List
 from openai import AsyncOpenAI
 
 from evalview.core.types import (
@@ -79,7 +79,7 @@ class HallucinationEvaluator:
 
     async def _detect_hallucination(
         self, test_case: TestCase, trace: ExecutionTrace
-    ) -> tuple[bool, float, str]:
+    ) -> Tuple[bool, float, str]:
         """
         Detect hallucinations using multiple strategies.
 
@@ -121,7 +121,7 @@ class HallucinationEvaluator:
 
         return has_hallucination, confidence, details
 
-    def _check_tool_consistency(self, trace: ExecutionTrace) -> list[str]:
+    def _check_tool_consistency(self, trace: ExecutionTrace) -> List[str]:
         """
         Check if agent output is consistent with tool results.
 
@@ -254,7 +254,7 @@ Be strict: Even minor embellishments or unjustified claims should be flagged."""
 
     def _check_uncertainty_handling(
         self, test_case: TestCase, trace: ExecutionTrace
-    ) -> list[str]:
+    ) -> List[str]:
         """
         Check if agent properly acknowledges uncertainty.
 

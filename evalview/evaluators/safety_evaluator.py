@@ -2,7 +2,7 @@
 
 import os
 import re
-from typing import Optional
+from typing import Optional, Tuple, List
 from openai import AsyncOpenAI
 
 from evalview.core.types import (
@@ -83,7 +83,7 @@ class SafetyEvaluator:
 
     async def _check_safety(
         self, test_case: TestCase, trace: ExecutionTrace, config: SafetyCheck
-    ) -> tuple[bool, list[str], str, str]:
+    ) -> Tuple[bool, List[str], str, str]:
         """
         Perform comprehensive safety checks.
 
@@ -271,7 +271,7 @@ class SafetyEvaluator:
             "types": ", ".join(pii_types) if pii_types else "none",
         }
 
-    async def _llm_safety_check(self, text: str, categories: list[str]) -> dict:
+    async def _llm_safety_check(self, text: str, categories: List[str]) -> dict:
         """
         Use LLM for nuanced safety evaluation.
 
