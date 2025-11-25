@@ -2,60 +2,48 @@
 
 ## Overview
 
-Before launching EvalView publicly, we need to validate it works with the most popular agent frameworks in production use.
+This document tracks EvalView's compatibility testing with popular agent frameworks.
 
 ## Testing Goals
 
 1. **Compatibility**: Verify EvalView works with each framework
 2. **Accuracy**: Ensure evaluators correctly assess agent behavior
 3. **Documentation**: Create working examples for each framework
-4. **Bug Discovery**: Find and fix issues before public launch
+4. **Bug Discovery**: Identify and fix issues
 
-## Testing Matrix
+## Framework Support Matrix
 
-### Priority 1: Core Frameworks (Must Test)
-
-| Framework | Status | Adapter | Example | Notes |
-|-----------|--------|---------|---------|-------|
-| **LangGraph** | ⏳ Pending | `LangGraphAdapter` | - | Most popular for production |
-| **LangChain** | ⏳ Pending | `HTTPAdapter` | - | Widely used, REST API |
-| **CrewAI** | ⏳ Pending | `CrewAIAdapter` | - | Multi-agent systems |
-| **OpenAI Assistants** | ⏳ Pending | `OpenAIAssistantsAdapter` | - | Official OpenAI framework |
-| **AutoGen (Microsoft)** | ⏳ Pending | `HTTPAdapter` | - | Enterprise multi-agent |
-| **LlamaIndex** | ⏳ Pending | `HTTPAdapter` | - | RAG-focused agents |
-| **Anthropic Claude** | ⏳ Pending | `HTTPAdapter` | - | Tool use via Messages API |
-| **Haystack** | ⏳ Pending | `HTTPAdapter` | - | NLP pipelines, agents |
-
-### Priority 2: Emerging Frameworks (Should Test)
+### Currently Supported
 
 | Framework | Status | Adapter | Example | Notes |
 |-----------|--------|---------|---------|-------|
-| **Semantic Kernel** | ⏳ Pending | `HTTPAdapter` | - | Microsoft's framework |
-| **Langroid** | ⏳ Pending | `HTTPAdapter` | - | Multi-agent, good docs |
-| **Phidata** | ⏳ Pending | `HTTPAdapter` | - | Growing community |
-| **AGiXT** | ⏳ Pending | `HTTPAdapter` | - | Open source platform |
-| **BabyAGI** | ⏳ Pending | `HTTPAdapter` | - | Task-driven autonomous |
-| **AgentGPT** | ⏳ Pending | `HTTPAdapter` | - | Web-based autonomous |
+| **LangGraph** | ✅ Supported | `HTTPAdapter` | [examples/langgraph/](examples/langgraph/) | Most popular for production |
+| **CrewAI** | ✅ Supported | `HTTPAdapter` | [examples/crewai/](examples/crewai/) | Multi-agent systems |
+| **AutoGen** | ✅ Supported | `HTTPAdapter` | [examples/autogen/](examples/autogen/) | Enterprise multi-agent |
+| **Dify** | ✅ Supported | `HTTPAdapter` | [examples/dify/](examples/dify/) | Visual workflow builder |
+| **OpenAI Assistants** | ✅ Supported | `HTTPAdapter` | [examples/openai-assistants/](examples/openai-assistants/) | Official OpenAI framework |
 
-### Priority 3: Specialized Frameworks (Nice to Test)
+### Planned Frameworks
 
-| Framework | Status | Adapter | Example | Notes |
-|-----------|--------|---------|---------|-------|
-| **MetaGPT** | ⏳ Pending | `HTTPAdapter` | - | Multi-agent for code |
-| **MemGPT** | ⏳ Pending | `HTTPAdapter` | - | Memory management |
-| **SuperAGI** | ⏳ Pending | `HTTPAdapter` | - | Infrastructure focused |
-| **ix** | ⏳ Pending | `HTTPAdapter` | - | Visual agent builder |
-| **Botpress** | ⏳ Pending | `HTTPAdapter` | - | Conversational AI |
-| **Rasa** | ⏳ Pending | `HTTPAdapter` | - | Open source chatbots |
+| Framework | Status | Adapter | Notes |
+|-----------|--------|---------|-------|
+| **LangChain** | ⏳ Planned | `HTTPAdapter` | Community contribution welcome |
+| **LlamaIndex** | ⏳ Planned | `HTTPAdapter` | RAG-focused agents |
+| **Anthropic Claude** | ⏳ Planned | `HTTPAdapter` | Tool use via Messages API |
+| **Haystack** | ⏳ Planned | `HTTPAdapter` | NLP pipelines, agents |
 
-### Priority 4: Custom/API-Based (Validation)
+### Community Requested (Contributions Welcome)
 
-| Type | Status | Adapter | Example | Notes |
-|------|--------|---------|---------|-------|
-| **Custom FastAPI** | ⏳ Pending | `HTTPAdapter` | - | Generic REST API |
-| **Custom Express** | ⏳ Pending | `HTTPAdapter` | - | Node.js backend |
-| **Custom Flask** | ⏳ Pending | `HTTPAdapter` | - | Python backend |
-| **AWS Lambda** | ⏳ Pending | `HTTPAdapter` | - | Serverless agents |
+| Framework | Status | Notes |
+|-----------|--------|-------|
+| **Semantic Kernel** | ⏳ Planned | Microsoft's framework |
+| **Langroid** | ⏳ Planned | Multi-agent, good docs |
+| **Phidata** | ⏳ Planned | Growing community |
+| **MetaGPT** | ⏳ Planned | Multi-agent for code |
+| **MemGPT** | ⏳ Planned | Memory management |
+| **Custom REST APIs** | ✅ Supported | Use `HTTPAdapter` |
+
+[Request framework support →](https://github.com/hidai25/EvalView/discussions)
 
 ## Test Scenarios
 
@@ -191,27 +179,29 @@ A framework passes testing if:
 |-------|-----------|----------|--------|------------|
 | - | - | - | - | - |
 
-## Timeline
+## Testing Roadmap
 
-- **Week 1**: Priority 1 frameworks (8 frameworks)
-- **Week 2**: Priority 2 frameworks (6 frameworks)
-- **Week 3**: Priority 3 + Custom (10 frameworks)
-- **Week 4**: Documentation, examples, bug fixes
+We're actively expanding framework support based on community feedback.
 
-**Total**: ~24 frameworks tested
+**Current priorities:**
+- LangChain integration
+- LlamaIndex support
+- Additional adapter types
 
 ## Notes
 
 - Focus on production-ready frameworks first
 - Document setup complexity (easy, medium, hard)
-- Note any EvalView bugs discovered
 - Track which adapters work best
 - Gather user pain points for future features
 
-## Next Steps After Testing
+## Contributing
 
-1. Update README with compatibility matrix
-2. Add tested framework badges
-3. Publish example repositories
-4. Write blog post: "We tested EvalView with 20+ agent frameworks"
-5. Create video demos for top 5 frameworks
+Want to add support for a framework?
+
+1. Create example in `examples/{framework}/`
+2. Add test cases
+3. Submit PR
+4. Update this document
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

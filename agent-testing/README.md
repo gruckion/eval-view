@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains test agents for validating EvalView compatibility with popular agent frameworks before public launch.
+This directory contains test agents for validating EvalView compatibility with popular agent frameworks.
 
 ## Goal
 
@@ -46,16 +46,14 @@ See [AGENT_TESTING.md](../AGENT_TESTING.md) for complete testing matrix.
 
 ### Quick Status
 
-| Priority | Framework | Status | Issues |
-|----------|-----------|--------|--------|
-| P1 | Reference Agent | ✅ Ready | - |
-| P1 | LangGraph | ⏳ TODO | - |
-| P1 | LangChain | ⏳ TODO | - |
-| P1 | CrewAI | ⏳ TODO | - |
-| P1 | OpenAI Assistants | ⏳ TODO | - |
-| P1 | AutoGen | ⏳ TODO | - |
-| P1 | LlamaIndex | ⏳ TODO | - |
-| P1 | Anthropic Claude | ⏳ TODO | - |
+| Framework | Status | Example |
+|-----------|--------|---------|
+| Reference Agent | ✅ Ready | `agent-testing/reference-agent/` |
+| LangGraph | ✅ Ready | `examples/langgraph/` |
+| CrewAI | ✅ Ready | `examples/crewai/` |
+| AutoGen | ✅ Ready | `examples/autogen/` |
+| Dify | ✅ Ready | `examples/dify/` |
+| OpenAI Assistants | ✅ Ready | `examples/openai-assistants/` |
 
 ## Directory Structure
 
@@ -252,32 +250,19 @@ Track your progress in [AGENT_TESTING.md](../AGENT_TESTING.md):
 | CrewAI | ❌ FAIL | Endpoint incompatible, need custom adapter |
 ```
 
-## Timeline
+## Current Support
 
-- **Week 1**: Priority 1 frameworks (8 frameworks)
-  - Reference Agent ✅
-  - LangGraph ⏳
-  - LangChain ⏳
-  - CrewAI ⏳
-  - OpenAI Assistants ⏳
-  - AutoGen ⏳
-  - LlamaIndex ⏳
-  - Anthropic Claude ⏳
-
-- **Week 2**: Priority 2 frameworks (6 frameworks)
-- **Week 3**: Priority 3 + Custom frameworks
-- **Week 4**: Documentation, bug fixes, examples
-
-## Launch Criteria
-
-Before launching, ensure:
-
-- [ ] Reference agent tests pass (validation)
-- [ ] At least 5 major frameworks tested and documented
-- [ ] Any discovered bugs are fixed
-- [ ] Compatibility matrix added to README
-- [ ] Example agents published
-- [ ] Framework-specific quirks documented
+| Framework | Status | Notes |
+|-----------|--------|-------|
+| Reference Agent | ✅ Supported | Validation baseline |
+| LangGraph | ✅ Supported | See [examples/langgraph/](../examples/langgraph/) |
+| CrewAI | ✅ Supported | See [examples/crewai/](../examples/crewai/) |
+| AutoGen | ✅ Supported | See [examples/autogen/](../examples/autogen/) |
+| Dify | ✅ Supported | See [examples/dify/](../examples/dify/) |
+| OpenAI Assistants | ✅ Supported | See [examples/openai-assistants/](../examples/openai-assistants/) |
+| LangChain | ⏳ Planned | Community contribution welcome |
+| LlamaIndex | ⏳ Planned | Community contribution welcome |
+| Others | ⏳ Planned | [Request support →](https://github.com/hidai25/EvalView/discussions)
 
 ## Resources
 
