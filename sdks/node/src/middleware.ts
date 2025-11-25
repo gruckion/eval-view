@@ -7,7 +7,7 @@
  * Usage:
  *   import { createEvalViewMiddleware } from '@evalview/node'
  *   
- *   app.post('/api/agenteval', createEvalViewMiddleware({
+ *   app.post('/api/evalview', createEvalViewMiddleware({
  *     targetEndpoint: '/api/unifiedchat',
  *     parseResponse: (ndjson) => ({ output, steps, cost, latency })
  *   }))
@@ -59,7 +59,7 @@ export interface MiddlewareConfig {
   /** Optional: Base URL for requests (defaults to current host) */
   baseUrl?: string;
 
-  /** Optional: Default user ID for test requests (defaults to 'agenteval-test-user') */
+  /** Optional: Default user ID for test requests (defaults to 'evalview-test-user') */
   defaultUserId?: string;
 
   /** Optional: Function to get/create user ID dynamically */
@@ -173,34 +173,34 @@ export function createEvalViewMiddleware(config: MiddlewareConfig) {
     transformRequest = defaultTransformRequest,
     parseResponse = defaultParseResponse,
     baseUrl,
-    defaultUserId = 'agenteval-test-user',
+    defaultUserId = 'evalview-test-user',
     getUserId,
   } = config;
 
-  return async function agentEvalHandler(req: any) {
+  return async function evalViewHandler(req: any) {
     const startTime = Date.now();
 
     try {
       // Parse EvalView request (Next.js App Router)
-      const agentEvalReq: EvalViewRequest = await req.json();
+      const evalViewReq: EvalViewRequest = await req.json();
 
       // Resolve user ID (priority: context.userId > getUserId() > defaultUserId)
-      if (!agentEvalReq.context) {
-        agentEvalReq.context = {};
+      if (!evalViewReq.context) {
+        evalViewReq.context = {};
       }
-      if (!agentEvalReq.context.userId) {
-        agentEvalReq.context.userId = getUserId
-          ? await getUserId(agentEvalReq)
+      if (!evalViewReq.context.userId) {
+        evalViewReq.context.userId = getUserId
+          ? await getUserId(evalViewReq)
           : defaultUserId;
       }
 
       console.log('[EvalView] Received request:', {
-        query: agentEvalReq.query,
-        route: agentEvalReq.context?.route,
+        query: evalViewReq.query,
+        route: evalViewReq.context?.route,
       });
 
       // Transform to target API format
-      const targetReq = transformRequest(agentEvalReq);
+      const targetReq = transformRequest(evalViewReq);
       console.log('[EvalView] Calling target endpoint:', targetEndpoint);
 
       // Determine base URL
@@ -225,16 +225,16 @@ export function createEvalViewMiddleware(config: MiddlewareConfig) {
       console.log('[EvalView] Received response, parsing...');
 
       // Parse and translate response
-      const agentEvalRes = parseResponse(responseText, startTime);
+      const evalViewRes = parseResponse(responseText, startTime);
       console.log('[EvalView] Translated response:', {
-        steps: agentEvalRes.steps.length,
-        outputLength: agentEvalRes.output.length,
-        cost: agentEvalRes.cost,
-        latency: agentEvalRes.latency,
+        steps: evalViewRes.steps.length,
+        outputLength: evalViewRes.output.length,
+        cost: evalViewRes.cost,
+        latency: evalViewRes.latency,
       });
 
       // Return JSON response (Next.js App Router format)
-      return new Response(JSON.stringify(agentEvalRes), {
+      return new Response(JSON.stringify(evalViewRes), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });

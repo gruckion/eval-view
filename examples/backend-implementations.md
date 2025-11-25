@@ -353,7 +353,7 @@ res.write(JSON.stringify(event) + '\n');  // Correct JSONL
 2. **Add metadata** - Enable cost/token tracking (10 more minutes)
 3. **Add streaming** (optional) - Full tool tracking (20 more minutes)
 4. **Run tests**: `evalview run`
-5. **Check results**: `.agenteval/results/TIMESTAMP.json`
+.evalview/results/TIMESTAMP.json
 
 ## Questions?
 

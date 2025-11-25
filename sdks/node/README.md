@@ -13,7 +13,7 @@ npm install @evalview/node
 ### Next.js App Router
 
 ```typescript
-// app/api/agenteval/route.ts
+// app/api/evalview/route.ts
 import { createEvalViewMiddleware } from '@evalview/node';
 
 export const POST = createEvalViewMiddleware({
@@ -26,7 +26,7 @@ export const POST = createEvalViewMiddleware({
 ```javascript
 const { createEvalViewMiddleware } = require('@evalview/node');
 
-app.post('/api/agenteval', createEvalViewMiddleware({
+app.post('/api/evalview', createEvalViewMiddleware({
   targetEndpoint: '/api/your-agent',
 }));
 ```
@@ -38,7 +38,7 @@ createEvalViewMiddleware({
   // Required: Endpoint to forward requests to
   targetEndpoint: '/api/unifiedchat',
 
-  // Optional: Default user ID for test requests (defaults to 'agenteval-test-user')
+  // Optional: Default user ID for test requests (defaults to 'evalview-test-user')
   // Use an existing user ID from your database
   defaultUserId: 'your-dev-user-id',
 
@@ -84,7 +84,7 @@ Point EvalView CLI to your endpoint:
 ```yaml
 # .evalview/config.yaml
 adapter: http
-endpoint: http://localhost:3000/api/agenteval
+endpoint: http://localhost:3000/api/evalview
 ```
 
 Then run tests:

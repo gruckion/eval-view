@@ -50,11 +50,11 @@ const prisma = new PrismaClient();
 
 async function main() {
   const testUser = await prisma.user.upsert({
-    where: { email: 'test@agenteval.local' },
+    where: { email: 'test@evalview.local' },
     update: { name: 'EvalView Test User' },
     create: {
       id: 'test-user',
-      email: 'test@agenteval.local',
+      email: 'test@evalview.local',
       name: 'EvalView Test User',
       // Add other required fields based on your schema
     },
@@ -96,11 +96,11 @@ async function main() {
   const users = db.collection('users');
 
   await users.updateOne(
-    { email: 'test@agenteval.local' },
+    { email: 'test@evalview.local' },
     {
       $set: {
         _id: 'test-user',
-        email: 'test@agenteval.local',
+        email: 'test@evalview.local',
         name: 'EvalView Test User',
         createdAt: new Date()
       }
@@ -122,7 +122,7 @@ For MySQL databases:
 ```sql
 -- create_test_user.sql
 INSERT INTO users (id, email, name, created_at)
-VALUES ('test-user', 'test@agenteval.local', 'EvalView Test User', NOW())
+VALUES ('test-user', 'test@evalview.local', 'EvalView Test User', NOW())
 ON DUPLICATE KEY UPDATE
   name = 'EvalView Test User';
 ```
@@ -149,7 +149,7 @@ async function createTestUser() {
   try {
     const user = await admin.auth().createUser({
       uid: 'test-user',
-      email: 'test@agenteval.local',
+      email: 'test@evalview.local',
       displayName: 'EvalView Test User'
     });
     console.log('Test user created:', user.uid);
@@ -183,7 +183,7 @@ INSERT INTO auth.users (
 VALUES (
   'test-user'::uuid,
   '00000000-0000-0000-0000-000000000000'::uuid,
-  'test@agenteval.local',
+  'test@evalview.local',
   crypt('test-password', gen_salt('bf')),
   now(),
   now(),
@@ -228,7 +228,7 @@ node scripts/setup-test-user.js
 
 - Use a dedicated test user (`test-user`)
 - Keep test user data separate from production
-- Use a test-specific email domain (e.g., `@agenteval.local`)
+- Use a test-specific email domain (e.g., `@evalview.local`)
 
 ### For CI/CD
 
