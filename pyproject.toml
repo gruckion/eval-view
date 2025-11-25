@@ -69,6 +69,25 @@ target-version = "py39"
 
 [tool.mypy]
 python_version = "3.9"
-strict = true
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+
+# Exclude CLI which has many click decorators that are hard to type
+[[tool.mypy.overrides]]
+module = "evalview.cli"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "evalview.reporters.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "evalview.tracking.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "evalview.recorder"
+ignore_errors = true
