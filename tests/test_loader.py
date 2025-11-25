@@ -192,11 +192,10 @@ class TestTestCaseLoaderFromDirectory:
         """Test loading from a directory that doesn't exist."""
         nonexistent_dir = tmp_path / "does_not_exist"
 
-        # Should raise an error when trying to glob a nonexistent directory
-        with pytest.raises((FileNotFoundError, StopIteration)):
-            test_cases = TestCaseLoader.load_from_directory(nonexistent_dir)
-            # Force evaluation of the glob results
-            list(test_cases)
+        # Path.glob() on nonexistent directory returns empty iterator, so we get empty list
+        # This is consistent with Python's Path behavior
+        test_cases = TestCaseLoader.load_from_directory(nonexistent_dir)
+        assert test_cases == []
 
     def test_load_from_directory_with_subdirectories(self, tmp_path):
         """Test that subdirectories are not searched (only top-level files)."""

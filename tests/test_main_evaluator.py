@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from evalview.evaluators.evaluator import Evaluator
 from evalview.core.types import (
@@ -30,7 +30,13 @@ class TestEvaluator:
     """Tests for main Evaluator orchestrator."""
 
     @pytest.mark.asyncio
-    async def test_evaluate_all_pass(self, sample_test_case, sample_execution_trace, mock_openai_client):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_evaluate_all_pass(
+        self, mock_output_openai, mock_halluc_openai, mock_safety_openai,
+        sample_test_case, sample_execution_trace, mock_openai_client
+    ):
         """Test complete evaluation when all criteria pass."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
@@ -47,8 +53,12 @@ class TestEvaluator:
         assert isinstance(result.timestamp, datetime)
 
     @pytest.mark.asyncio
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
     async def test_evaluate_creates_all_evaluations(
-        self, sample_test_case, sample_execution_trace, mock_openai_client
+        self, mock_output_openai, mock_halluc_openai, mock_safety_openai,
+        sample_test_case, sample_execution_trace, mock_openai_client
     ):
         """Test that all sub-evaluators are run."""
         evaluator = Evaluator()
@@ -65,7 +75,10 @@ class TestEvaluator:
         assert isinstance(result.evaluations.cost, CostEvaluation)
         assert isinstance(result.evaluations.latency, LatencyEvaluation)
 
-    def test_compute_overall_score_perfect(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_overall_score_perfect(self, mock1, mock2, mock3):
         """Test score calculation with perfect results."""
         evaluator = Evaluator()
 
@@ -96,7 +109,10 @@ class TestEvaluator:
         # Score = 100 * 0.3 (tool) + 100 * 0.5 (output) + 100 * 0.2 (sequence) = 100
         assert score == 100.0
 
-    def test_compute_overall_score_weighted(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_overall_score_weighted(self, mock1, mock2, mock3):
         """Test score calculation with weighted components."""
         evaluator = Evaluator()
 
@@ -128,7 +144,10 @@ class TestEvaluator:
         #       = 15 + 40 + 0 = 55
         assert score == 55.0
 
-    def test_compute_overall_score_zero(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_overall_score_zero(self, mock1, mock2, mock3):
         """Test score calculation with all zeros."""
         evaluator = Evaluator()
 
@@ -158,7 +177,10 @@ class TestEvaluator:
 
         assert score == 0.0
 
-    def test_compute_pass_fail_score_threshold(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_pass_fail_score_threshold(self, mock1, mock2, mock3):
         """Test pass/fail based on score threshold."""
         evaluator = Evaluator()
 
@@ -201,7 +223,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations, test_case_low_threshold, score)
         assert passed is True
 
-    def test_compute_pass_fail_cost_threshold(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_pass_fail_cost_threshold(self, mock1, mock2, mock3):
         """Test pass/fail based on cost threshold."""
         evaluator = Evaluator()
 
@@ -233,7 +258,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations_fail, test_case, score)
         assert passed is False  # Should fail due to cost
 
-    def test_compute_pass_fail_latency_threshold(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_pass_fail_latency_threshold(self, mock1, mock2, mock3):
         """Test pass/fail based on latency threshold."""
         evaluator = Evaluator()
 
@@ -265,7 +293,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations_fail, test_case, score)
         assert passed is False  # Should fail due to latency
 
-    def test_compute_pass_fail_all_pass(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_pass_fail_all_pass(self, mock1, mock2, mock3):
         """Test pass/fail when all criteria are met."""
         evaluator = Evaluator()
 
@@ -296,7 +327,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations, test_case, score)
         assert passed is True
 
-    def test_compute_pass_fail_multiple_failures(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_pass_fail_multiple_failures(self, mock1, mock2, mock3):
         """Test pass/fail with multiple failures."""
         evaluator = Evaluator()
 
@@ -328,7 +362,12 @@ class TestEvaluator:
         assert passed is False  # Should fail on multiple criteria
 
     @pytest.mark.asyncio
-    async def test_evaluate_with_boundary_score(self, mock_openai_client):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_evaluate_with_boundary_score(
+        self, mock_output_openai, mock_halluc_openai, mock_safety_openai, mock_openai_client
+    ):
         """Test evaluation with score exactly at threshold."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
@@ -370,7 +409,12 @@ class TestEvaluator:
         assert result.passed is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_score_rounding(self, mock_openai_client):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_evaluate_score_rounding(
+        self, mock_output_openai, mock_halluc_openai, mock_safety_openai, mock_openai_client
+    ):
         """Test that score is properly rounded to 2 decimal places."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
@@ -410,7 +454,12 @@ class TestEvaluator:
         assert len(str(result.score).split(".")[-1]) <= 2
 
     @pytest.mark.asyncio
-    async def test_evaluate_with_no_thresholds(self, mock_openai_client):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_evaluate_with_no_thresholds(
+        self, mock_output_openai, mock_halluc_openai, mock_safety_openai, mock_openai_client
+    ):
         """Test evaluation when cost/latency thresholds are not specified."""
         evaluator = Evaluator()
         evaluator.output_evaluator.client = mock_openai_client
@@ -463,7 +512,10 @@ class TestEvaluator:
         assert evaluator.cost_evaluator is not None
         assert evaluator.latency_evaluator is not None
 
-    def test_compute_overall_score_weights_sum_to_one(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_overall_score_weights_sum_to_one(self, mock1, mock2, mock3):
         """Verify that evaluation weights sum to 1.0 (100%)."""
         evaluator = Evaluator()
 
@@ -496,7 +548,10 @@ class TestEvaluator:
         # This verifies that weights sum to 1.0
         assert score == 100.0
 
-    def test_compute_overall_score_only_output_quality(self):
+    @patch("evalview.evaluators.safety_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.hallucination_evaluator.AsyncOpenAI")
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    def test_compute_overall_score_only_output_quality(self, mock1, mock2, mock3):
         """Test score when only output quality is considered (others zero)."""
         evaluator = Evaluator()
 

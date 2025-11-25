@@ -19,9 +19,10 @@ class TestHTTPAdapter:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()  # json() is sync, so use MagicMock
             mock_response.status_code = 200
             mock_response.json.return_value = http_response_flat
+            mock_response.raise_for_status = MagicMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -352,9 +353,10 @@ class TestHTTPAdapter:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()  # json() is sync, so use MagicMock
             mock_response.status_code = 200
             mock_response.json.return_value = {"response": "test"}
+            mock_response.raise_for_status = MagicMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -376,9 +378,10 @@ class TestHTTPAdapter:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()  # json() is sync, so use MagicMock
             mock_response.status_code = 200
             mock_response.json.return_value = {"response": "test"}
+            mock_response.raise_for_status = MagicMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -399,9 +402,10 @@ class TestHTTPAdapter:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()  # json() is sync, so use MagicMock
             mock_response.status_code = 200
             mock_response.json.return_value = {"response": "test"}
+            mock_response.raise_for_status = MagicMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -420,7 +424,7 @@ class TestHTTPAdapter:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()  # json() is sync, so use MagicMock
             mock_response.status_code = 500
             mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
                 "Server Error", request=MagicMock(), response=mock_response
@@ -510,9 +514,10 @@ class TestHTTPAdapter:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()  # json() is sync, so use MagicMock
             mock_response.status_code = 200
             mock_response.json.return_value = {"response": "test"}
+            mock_response.raise_for_status = MagicMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None

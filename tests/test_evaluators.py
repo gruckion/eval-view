@@ -237,8 +237,9 @@ class TestToolCallEvaluator:
         assert result.accuracy == 1.0  # Expected tool was called
         assert result.correct == ["search"]
         assert result.missing == []
-        # Both calls appear in unexpected (after first match)
-        assert result.unexpected == ["search"]
+        # Duplicates of expected tools are not considered unexpected
+        # since the tool itself is in the expected set
+        assert result.unexpected == []
 
     def test_none_expected_tools(self):
         """Test when expected.tools is None (not specified)."""
@@ -450,7 +451,8 @@ class TestOutputEvaluator:
     """Tests for OutputEvaluator."""
 
     @pytest.mark.asyncio
-    async def test_contains_checks_all_pass(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_contains_checks_all_pass(self, mock_openai_class, mock_openai_client):
         """Test contains checks when all strings are present."""
         test_case = TestCase(
             name="test",
@@ -480,7 +482,8 @@ class TestOutputEvaluator:
         assert result.score == 85  # From mock
 
     @pytest.mark.asyncio
-    async def test_contains_checks_case_insensitive(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_contains_checks_case_insensitive(self, mock_openai_class, mock_openai_client):
         """Test that contains checks are case-insensitive."""
         test_case = TestCase(
             name="test",
@@ -508,7 +511,8 @@ class TestOutputEvaluator:
         assert result.contains_checks.failed == []
 
     @pytest.mark.asyncio
-    async def test_contains_checks_some_fail(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_contains_checks_some_fail(self, mock_openai_class, mock_openai_client):
         """Test contains checks when some strings are missing."""
         test_case = TestCase(
             name="test",
@@ -537,7 +541,8 @@ class TestOutputEvaluator:
         assert set(result.contains_checks.failed) == {"London", "Berlin"}
 
     @pytest.mark.asyncio
-    async def test_not_contains_checks_all_pass(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_not_contains_checks_all_pass(self, mock_openai_class, mock_openai_client):
         """Test not_contains checks when prohibited strings are absent."""
         test_case = TestCase(
             name="test",
@@ -566,7 +571,8 @@ class TestOutputEvaluator:
         assert result.not_contains_checks.failed == []
 
     @pytest.mark.asyncio
-    async def test_not_contains_checks_some_fail(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_not_contains_checks_some_fail(self, mock_openai_class, mock_openai_client):
         """Test not_contains checks when some prohibited strings are present."""
         test_case = TestCase(
             name="test",
@@ -593,7 +599,8 @@ class TestOutputEvaluator:
         assert result.not_contains_checks.failed == ["Paris"]
 
     @pytest.mark.asyncio
-    async def test_no_string_checks(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_no_string_checks(self, mock_openai_class, mock_openai_client):
         """Test when no contains/not_contains are specified."""
         test_case = TestCase(
             name="test",
@@ -622,7 +629,8 @@ class TestOutputEvaluator:
         assert result.not_contains_checks.failed == []
 
     @pytest.mark.asyncio
-    async def test_llm_as_judge_integration(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_llm_as_judge_integration(self, mock_openai_class, mock_openai_client):
         """Test LLM-as-judge integration."""
         test_case = TestCase(
             name="test",
@@ -650,7 +658,8 @@ class TestOutputEvaluator:
         mock_openai_client.chat.completions.create.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_empty_output(self, mock_openai_client):
+    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
+    async def test_empty_output(self, mock_openai_class, mock_openai_client):
         """Test evaluation with empty output."""
         test_case = TestCase(
             name="test",
