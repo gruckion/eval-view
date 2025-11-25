@@ -147,6 +147,7 @@ class ConsoleReporter:
         # Summary table
         table = Table(title="📊 Evaluation Summary", show_header=True)
         table.add_column("Test Case", style="cyan")
+        table.add_column("Backend", style="magenta")
         table.add_column("Score", justify="right")
         table.add_column("Status")
         table.add_column("Cost", justify="right")
@@ -168,8 +169,12 @@ class ConsoleReporter:
             else:
                 tokens_str = "N/A"
 
+            # Get adapter name (capitalize for display)
+            adapter_display = (result.adapter_name or "unknown").capitalize()
+
             table.add_row(
                 result.test_case,
+                adapter_display,
                 f"[{score_color}]{result.score:.1f}[/{score_color}]",
                 status,
                 f"${result.trace.metrics.total_cost:.4f}",

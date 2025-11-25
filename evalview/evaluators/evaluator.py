@@ -35,13 +35,16 @@ class Evaluator:
         self.hallucination_evaluator = HallucinationEvaluator(openai_api_key)
         self.safety_evaluator = SafetyEvaluator(openai_api_key)
 
-    async def evaluate(self, test_case: TestCase, trace: ExecutionTrace) -> EvaluationResult:
+    async def evaluate(
+        self, test_case: TestCase, trace: ExecutionTrace, adapter_name: Optional[str] = None
+    ) -> EvaluationResult:
         """
         Run complete evaluation on a test case.
 
         Args:
             test_case: Test case with expected behavior
             trace: Execution trace from agent
+            adapter_name: Name of the adapter used (e.g., "langgraph", "crewai")
 
         Returns:
             Complete evaluation result
@@ -70,6 +73,7 @@ class Evaluator:
             evaluations=evaluations,
             trace=trace,
             timestamp=datetime.now(),
+            adapter_name=adapter_name,
             input_query=test_case.input.query,
             actual_output=trace.final_output,
         )

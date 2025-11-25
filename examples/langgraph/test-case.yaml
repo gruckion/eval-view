@@ -6,7 +6,7 @@ description: "Test research agent's ability to search and synthesize information
 
 # Configure adapter for LangGraph
 adapter: langgraph
-endpoint: http://localhost:8123
+endpoint: http://localhost:2024
 
 input:
   query: "Research the latest developments in AI agents and summarize the key trends"

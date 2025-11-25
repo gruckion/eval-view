@@ -490,8 +490,9 @@ async def _run_async(
                 # Execute agent
                 trace = await test_adapter.execute(test_case.input.query, test_case.input.context)
 
-                # Evaluate
-                result = await evaluator.evaluate(test_case, trace)
+                # Evaluate (pass adapter name for display)
+                adapter_name = getattr(test_adapter, 'name', None)
+                result = await evaluator.evaluate(test_case, trace, adapter_name=adapter_name)
                 results.append(result)
 
                 # Track result and compare to baseline if enabled
@@ -749,31 +750,32 @@ async def _connect_async(endpoint: Optional[str]):
     # Common ports to check
     common_ports = [8000, 2024, 3000, 8080, 5000, 8888, 7860]
 
-    # Common endpoints to try (framework_type, name, path, adapter_type)
+    # Common endpoints to try (framework_type, name, path, adapter_type, method)
     # Will be combined with common_ports
     common_patterns = [
-        ("langgraph", "LangGraph", "/api/chat", "langgraph"),
-        ("langgraph", "LangGraph", "/invoke", "langgraph"),
-        ("langgraph", "LangGraph", "/threads/runs/stream", "langgraph"),  # LangGraph Cloud
-        ("http", "LangServe", "/agent", "http"),
-        ("streaming", "LangServe", "/agent/stream", "streaming"),
-        ("streaming", "TapeScope", "/api/unifiedchat", "streaming"),
-        ("crewai", "CrewAI", "/crew", "crewai"),
-        ("http", "FastAPI", "/api/agent", "http"),
-        ("http", "FastAPI", "/chat", "http"),
+        ("langgraph", "LangGraph Cloud", "/ok", "langgraph", "GET"),  # LangGraph Cloud health
+        ("langgraph", "LangGraph Cloud", "/info", "langgraph", "GET"),  # LangGraph Cloud info
+        ("langgraph", "LangGraph", "/api/chat", "langgraph", "POST"),
+        ("langgraph", "LangGraph", "/invoke", "langgraph", "POST"),
+        ("http", "LangServe", "/agent", "http", "POST"),
+        ("streaming", "LangServe", "/agent/stream", "streaming", "POST"),
+        ("streaming", "TapeScope", "/api/unifiedchat", "streaming", "POST"),
+        ("crewai", "CrewAI", "/crew", "crewai", "POST"),
+        ("http", "FastAPI", "/api/agent", "http", "POST"),
+        ("http", "FastAPI", "/chat", "http", "POST"),
     ]
 
     # Generate all port+path combinations
     common_endpoints = []
     for port in common_ports:
-        for framework, name, path, adapter in common_patterns:
+        for framework, name, path, adapter, method in common_patterns:
             url = f"http://127.0.0.1:{port}{path}"
-            common_endpoints.append((framework, f"{name} (:{port})", url, adapter))
+            common_endpoints.append((framework, f"{name} (:{port})", url, adapter, method))
 
     endpoints_to_test = []
     if endpoint:
         # User provided specific endpoint - try to detect adapter type
-        endpoints_to_test = [("http", "Custom", endpoint, "http")]
+        endpoints_to_test = [("http", "Custom", endpoint, "http", "POST")]
     else:
         # Try common ones
         endpoints_to_test = common_endpoints
@@ -781,20 +783,24 @@ async def _connect_async(endpoint: Optional[str]):
     successful = None
 
     async with httpx.AsyncClient(timeout=5.0) as client:
-        for adapter_type, name, url, default_adapter in endpoints_to_test:
+        for adapter_type, name, url, default_adapter, method in endpoints_to_test:
             try:
                 console.print(f"[dim]Testing {name}: {url}...[/dim]", end=" ")
 
-                # Try a simple POST request
-                response = await client.post(
-                    url,
-                    json={
-                        "query": "test",
-                        "message": "test",
-                        "messages": [{"role": "user", "content": "test"}],
-                    },
-                    headers={"Content-Type": "application/json"},
-                )
+                # Use appropriate HTTP method
+                if method == "GET":
+                    response = await client.get(url)
+                else:
+                    # Try a simple POST request
+                    response = await client.post(
+                        url,
+                        json={
+                            "query": "test",
+                            "message": "test",
+                            "messages": [{"role": "user", "content": "test"}],
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
 
                 if response.status_code in [
                     200,
@@ -864,14 +870,18 @@ async def _connect_async(endpoint: Optional[str]):
 
             # Update config with detected adapter
             config["adapter"] = detected_adapter
-            config["endpoint"] = url
+            # For LangGraph Cloud, use base URL (strip /ok or /info)
+            endpoint_url = url
+            if detected_adapter == "langgraph" and (url.endswith("/ok") or url.endswith("/info")):
+                endpoint_url = url.rsplit("/", 1)[0]
+            config["endpoint"] = endpoint_url
 
             with open(config_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
             console.print("[green]✅ Updated config:[/green]")
             console.print(f"  • adapter: {detected_adapter}")
-            console.print(f"  • endpoint: {url}")
+            console.print(f"  • endpoint: {endpoint_url}")
             console.print()
             console.print("[blue]Next steps:[/blue]")
             console.print("  1. Create test cases in tests/test-cases/")

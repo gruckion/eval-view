@@ -256,6 +256,9 @@ class EvaluationResult(BaseModel):
     trace: ExecutionTrace
     timestamp: datetime
 
+    # Adapter info for dynamic display
+    adapter_name: Optional[str] = None  # e.g., "langgraph", "crewai", "tapescope"
+
     # User-facing fields for reports
     input_query: Optional[str] = None
     actual_output: Optional[str] = None
