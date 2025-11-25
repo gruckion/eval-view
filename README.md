@@ -670,9 +670,9 @@ ruff evalview/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
-## Who's Using EvalView?
+## Built For
 
-EvalView is production-ready and used by teams building:
+EvalView is designed for teams building:
 - Financial analysis agents
 - Customer support chatbots
 - Research and data extraction agents
