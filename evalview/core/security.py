@@ -89,7 +89,7 @@ def resolve_hostname(hostname: str) -> Optional[str]:
         infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
         if infos:
             # Return the first IP address
-            return infos[0][4][0]
+            return str(infos[0][4][0])
     except (socket.gaierror, socket.herror, OSError):
         pass
     return None
