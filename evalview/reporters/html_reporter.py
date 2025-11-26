@@ -246,7 +246,8 @@ class HTMLReporter:
 
 
 # Embedded HTML template (no external file needed)
-HTML_TEMPLATE = '''<!DOCTYPE html>
+# fmt: off
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -504,4 +505,5 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     {% endif %}
 </body>
 </html>
-'''
+"""
+# fmt: on

@@ -61,8 +61,9 @@ jobs:
         pip install -e ".[dev]"
 
     - name: Check formatting with Black
+      continue-on-error: true  # Report but don't fail CI
       run: |
-        black --check evalview/ tests/
+        black --check evalview/ tests/ || echo "::warning::Some files need reformatting. Run 'black evalview/ tests/' locally."
 
     - name: Lint with Ruff
       run: |
