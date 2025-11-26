@@ -56,6 +56,7 @@ class CrewAIAdapter(AgentAdapter):
         self.timeout = timeout
         self.verbose = verbose
         self.model_config = model_config or {}
+        self._last_raw_response = None  # For debug mode
 
     @property
     def name(self) -> str:
@@ -95,6 +96,9 @@ class CrewAIAdapter(AgentAdapter):
             logger.debug(f"📥 Response: {json.dumps(data, indent=2)[:500]}...")
 
         end_time = datetime.now()
+
+        # Store raw response for debug mode
+        self._last_raw_response = data
 
         # Parse CrewAI response
         steps = self._parse_tasks(data)
@@ -186,15 +190,30 @@ class CrewAIAdapter(AgentAdapter):
         if total_cost == 0.0:
             total_cost = sum(step.metrics.cost for step in steps)
 
-        if not total_tokens:
-            total_tokens = sum(step.metrics.tokens or 0 for step in steps)
-            total_tokens = total_tokens if total_tokens > 0 else None
-
-        # Convert integer total_tokens to TokenUsage object
+        # If total_tokens not provided, aggregate from steps
+        # Note: step.metrics.tokens is Optional[TokenUsage], not int
         token_usage = None
         if total_tokens:
-            # CrewAI doesn't provide a breakdown, so put all tokens in output_tokens
+            # CrewAI provides total as int, convert to TokenUsage
             token_usage = TokenUsage(output_tokens=total_tokens)
+        else:
+            # Sum tokens from steps - handle TokenUsage objects properly
+            input_sum = 0
+            output_sum = 0
+            cached_sum = 0
+            for step in steps:
+                if step.metrics.tokens:
+                    input_sum += step.metrics.tokens.input_tokens
+                    output_sum += step.metrics.tokens.output_tokens
+                    cached_sum += step.metrics.tokens.cached_tokens
+
+            total_token_count = input_sum + output_sum + cached_sum
+            if total_token_count > 0:
+                token_usage = TokenUsage(
+                    input_tokens=input_sum,
+                    output_tokens=output_sum,
+                    cached_tokens=cached_sum,
+                )
 
         return ExecutionMetrics(
             total_cost=total_cost,

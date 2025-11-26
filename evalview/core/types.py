@@ -1,8 +1,11 @@
 """Core type definitions for EvalView."""
 
+import logging
 from datetime import datetime
 from typing import Any, Optional, List, Dict, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -107,9 +110,41 @@ class TokenUsage(BaseModel):
 class StepMetrics(BaseModel):
     """Metrics for a single step."""
 
-    latency: float  # in milliseconds
-    cost: float  # in dollars
+    latency: float = 0.0  # in milliseconds (default to 0.0 for flexibility)
+    cost: float = 0.0  # in dollars (default to 0.0 for flexibility)
     tokens: Optional[TokenUsage] = None
+
+    @validator("latency", "cost", pre=True, always=True)
+    def coerce_to_float(cls, v, field):
+        """Convert None or invalid values to 0.0 with DEBUG logging."""
+        if v is None:
+            logger.debug(f"Coerced {field.name} from None to 0.0")
+            return 0.0
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Expected numeric value for {field.name}, got {type(v).__name__}: {v}. "
+                f"Ensure your adapter returns numeric values for metrics."
+            )
+
+    @validator("tokens", pre=True)
+    def coerce_tokens(cls, v):
+        """Convert int/dict to TokenUsage with DEBUG logging."""
+        if v is None:
+            return None
+        if isinstance(v, int):
+            logger.debug(f"Coerced tokens from int ({v}) to TokenUsage(output_tokens={v})")
+            return TokenUsage(output_tokens=v)
+        if isinstance(v, dict):
+            logger.debug("Coerced tokens from dict to TokenUsage")
+            return TokenUsage(**v)
+        if isinstance(v, TokenUsage):
+            return v
+        raise ValueError(
+            f"tokens must be TokenUsage, dict, or int, got {type(v).__name__}. "
+            f"Example: {{'input_tokens': 100, 'output_tokens': 200}}"
+        )
 
 
 class StepTrace(BaseModel):
@@ -132,6 +167,26 @@ class ExecutionMetrics(BaseModel):
     total_latency: float
     total_tokens: Optional[TokenUsage] = None
 
+    @validator("total_tokens", pre=True)
+    def coerce_total_tokens(cls, v):
+        """Convert int/dict to TokenUsage with DEBUG logging."""
+        if v is None:
+            return None
+        if isinstance(v, int):
+            logger.debug(
+                f"Coerced total_tokens from int ({v}) to TokenUsage(output_tokens={v})"
+            )
+            return TokenUsage(output_tokens=v)
+        if isinstance(v, dict):
+            logger.debug("Coerced total_tokens from dict to TokenUsage")
+            return TokenUsage(**v)
+        if isinstance(v, TokenUsage):
+            return v
+        raise ValueError(
+            f"total_tokens must be TokenUsage, dict, or int, got {type(v).__name__}. "
+            f"Check your adapter's _calculate_metrics() method."
+        )
+
 
 class ExecutionTrace(BaseModel):
     """Execution trace captured from agent run."""
@@ -142,6 +197,22 @@ class ExecutionTrace(BaseModel):
     steps: List[StepTrace]
     final_output: str
     metrics: ExecutionMetrics
+
+    @validator("start_time", "end_time", pre=True)
+    def coerce_datetime(cls, v, field):
+        """Convert ISO string to datetime with DEBUG logging."""
+        if isinstance(v, str):
+            try:
+                # Handle ISO format with optional timezone
+                result = datetime.fromisoformat(v.replace("Z", "+00:00"))
+                logger.debug(f"Coerced {field.name} from string to datetime")
+                return result
+            except ValueError:
+                raise ValueError(
+                    f"Invalid datetime format for {field.name}: {v}. "
+                    f"Use ISO format (YYYY-MM-DDTHH:MM:SS) or datetime object."
+                )
+        return v
 
 
 # ============================================================================

@@ -57,6 +57,7 @@ class HTTPAdapter(AgentAdapter):
         self.headers = headers or {}
         self.timeout = timeout
         self.model_config = model_config or {}
+        self._last_raw_response = None  # For debug mode
 
     @property
     def name(self) -> str:
@@ -83,6 +84,9 @@ class HTTPAdapter(AgentAdapter):
             data = response.json()
 
         end_time = datetime.now()
+
+        # Store raw response for debug mode
+        self._last_raw_response = data
 
         return self._parse_response(data, start_time, end_time)
 

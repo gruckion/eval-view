@@ -225,6 +225,325 @@ def test_my_evaluator():
 - Document any new test case fields it uses
 - Add examples showing how to use it
 
+## Creating a Custom Adapter
+
+Adapters handle communication with different AI agent frameworks. Here's how to create one:
+
+### 1. Create the Adapter
+
+Create a new file in `evalview/adapters/`:
+
+```python
+# evalview/adapters/my_adapter.py
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Set
+import httpx
+import logging
+
+from evalview.adapters.base import AgentAdapter
+from evalview.core.types import (
+    ExecutionTrace,
+    StepTrace,
+    StepMetrics,
+    ExecutionMetrics,
+    TokenUsage,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class MyAdapter(AgentAdapter):
+    """Adapter for MyFramework agents.
+
+    Supports:
+    - Standard REST API
+    - Your framework's specific response format
+
+    Security Note:
+        SSRF protection is enabled by default.
+    """
+
+    def __init__(
+        self,
+        endpoint: str,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: float = 30.0,
+        verbose: bool = False,
+        model_config: Optional[Dict[str, Any]] = None,
+        allow_private_urls: bool = False,
+        allowed_hosts: Optional[Set[str]] = None,
+    ):
+        # Set SSRF protection settings BEFORE validation
+        self.allow_private_urls = allow_private_urls
+        self.allowed_hosts = allowed_hosts
+
+        # Validate endpoint URL for SSRF protection
+        self.endpoint = self.validate_endpoint(endpoint)
+
+        self.headers = headers or {"Content-Type": "application/json"}
+        self.timeout = timeout
+        self.verbose = verbose
+        self.model_config = model_config or {}
+        self._last_raw_response = None  # For debug mode
+
+    @property
+    def name(self) -> str:
+        return "my-adapter"
+
+    async def execute(
+        self, query: str, context: Optional[Dict[str, Any]] = None
+    ) -> ExecutionTrace:
+        """Execute agent and capture trace."""
+        context = context or {}
+        start_time = datetime.now()
+
+        # Make API request
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                self.endpoint,
+                json={"query": query, **context},
+                headers=self.headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        end_time = datetime.now()
+
+        # Store raw response for debug mode
+        self._last_raw_response = data
+
+        # Parse response into ExecutionTrace
+        steps = self._parse_steps(data)
+        final_output = self._extract_output(data)
+        metrics = self._calculate_metrics(data, steps, start_time, end_time)
+
+        return ExecutionTrace(
+            session_id=data.get("session_id", f"my-{start_time.timestamp()}"),
+            start_time=start_time,
+            end_time=end_time,
+            steps=steps,
+            final_output=final_output,
+            metrics=metrics,
+        )
+
+    def _parse_steps(self, data: Dict[str, Any]) -> List[StepTrace]:
+        """Parse steps from API response."""
+        steps = []
+
+        for i, step_data in enumerate(data.get("steps", [])):
+            step = StepTrace(
+                step_id=step_data.get("id", f"step-{i}"),
+                step_name=step_data.get("name", f"Step {i+1}"),
+                tool_name=step_data.get("tool") or "unknown",  # Handle None
+                parameters=step_data.get("params", {}),
+                output=step_data.get("output", ""),
+                success=step_data.get("success", True),
+                error=step_data.get("error"),
+                metrics=StepMetrics(
+                    latency=step_data.get("latency", 0.0),  # Defaults to 0.0
+                    cost=step_data.get("cost", 0.0),
+                    tokens=step_data.get("tokens"),  # Can be int, dict, or None
+                ),
+            )
+            steps.append(step)
+
+        return steps
+
+    def _extract_output(self, data: Dict[str, Any]) -> str:
+        """Extract final output - try multiple field names."""
+        return (
+            data.get("response")
+            or data.get("output")
+            or data.get("result")
+            or ""
+        )
+
+    def _calculate_metrics(
+        self,
+        data: Dict[str, Any],
+        steps: List[StepTrace],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> ExecutionMetrics:
+        """Calculate execution metrics."""
+        total_latency = (end_time - start_time).total_seconds() * 1000
+
+        # Get tokens - can be int or TokenUsage (validators handle coercion)
+        total_tokens = data.get("total_tokens")
+
+        # If not in response, aggregate from steps
+        if not total_tokens:
+            input_sum = sum(
+                s.metrics.tokens.input_tokens
+                for s in steps if s.metrics.tokens
+            )
+            output_sum = sum(
+                s.metrics.tokens.output_tokens
+                for s in steps if s.metrics.tokens
+            )
+            if input_sum + output_sum > 0:
+                total_tokens = TokenUsage(
+                    input_tokens=input_sum,
+                    output_tokens=output_sum,
+                )
+
+        return ExecutionMetrics(
+            total_cost=data.get("cost", 0.0),
+            total_latency=total_latency,
+            total_tokens=total_tokens,  # int, dict, TokenUsage, or None - all work
+        )
+
+    async def health_check(self) -> bool:
+        """Check if endpoint is reachable."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(self.endpoint.replace("/invoke", "/health"))
+                return response.status_code in [200, 201, 404]
+        except Exception:
+            return False
+```
+
+### 2. Common Pitfalls to Avoid
+
+**Token type errors:**
+```python
+# WRONG: Returning int directly
+return ExecutionMetrics(total_tokens=1500)
+
+# RIGHT: EvalView auto-coerces, but explicit is better
+return ExecutionMetrics(total_tokens=TokenUsage(output_tokens=1500))
+```
+
+**Missing defaults for StepMetrics:**
+```python
+# WRONG: Will fail if latency/cost missing
+metrics=StepMetrics(
+    latency=step_data.get("latency"),  # Could be None
+    cost=step_data.get("cost"),
+)
+
+# RIGHT: Provide defaults
+metrics=StepMetrics(
+    latency=step_data.get("latency", 0.0),
+    cost=step_data.get("cost", 0.0),
+)
+```
+
+**Datetime handling:**
+```python
+# WRONG: Passing string
+start_time="2025-01-15T10:30:00"
+
+# RIGHT: Use datetime objects
+start_time=datetime.now()
+# Or let validators coerce ISO strings (v1.x+)
+```
+
+**SSRF protection order:**
+```python
+# WRONG: Setting allow_private_urls after validation
+self.endpoint = self.validate_endpoint(endpoint)
+self.allow_private_urls = allow_private_urls  # Too late!
+
+# RIGHT: Set BEFORE calling validate_endpoint
+self.allow_private_urls = allow_private_urls
+self.endpoint = self.validate_endpoint(endpoint)
+```
+
+### 3. Register in CLI
+
+Update `evalview/cli.py` to include your adapter:
+
+```python
+from evalview.adapters.my_adapter import MyAdapter
+
+# In the run command, add to adapter selection:
+elif adapter_type == "my-adapter":
+    adapter = MyAdapter(
+        endpoint=config["endpoint"],
+        headers=config.get("headers", {}),
+        timeout=config.get("timeout", 30.0),
+        verbose=verbose,
+        model_config=model_config,
+        allow_private_urls=allow_private_urls,
+    )
+```
+
+### 4. Write Tests
+
+Create `tests/test_my_adapter.py`:
+
+```python
+import pytest
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
+
+from evalview.adapters.my_adapter import MyAdapter
+from evalview.core.types import TokenUsage
+
+
+class TestMyAdapter:
+    """Tests for MyAdapter."""
+
+    def test_name_property(self):
+        adapter = MyAdapter(
+            endpoint="http://localhost:8000",
+            allow_private_urls=True,
+        )
+        assert adapter.name == "my-adapter"
+
+    @pytest.mark.asyncio
+    async def test_execute_basic(self):
+        adapter = MyAdapter(
+            endpoint="http://localhost:8000",
+            allow_private_urls=True,
+        )
+
+        mock_response = {
+            "session_id": "test-123",
+            "steps": [
+                {"tool": "search", "output": "results"},
+            ],
+            "response": "Final answer",
+            "total_tokens": 1500,
+        }
+
+        with patch.object(adapter, '_make_request', return_value=mock_response):
+            trace = await adapter.execute("test query")
+
+            assert trace.session_id == "test-123"
+            assert len(trace.steps) == 1
+            assert trace.steps[0].tool_name == "search"
+            assert trace.final_output == "Final answer"
+
+    def test_token_coercion(self):
+        """Test that integer tokens are coerced to TokenUsage."""
+        adapter = MyAdapter(
+            endpoint="http://localhost:8000",
+            allow_private_urls=True,
+        )
+
+        data = {"total_tokens": 1500}
+        metrics = adapter._calculate_metrics(
+            data, [], datetime.now(), datetime.now()
+        )
+
+        # Should be coerced to TokenUsage by Pydantic validators
+        assert isinstance(metrics.total_tokens, TokenUsage)
+```
+
+### 5. Validate Your Adapter
+
+Use the built-in validator:
+
+```bash
+# Test your adapter
+evalview validate-adapter --endpoint http://localhost:8000 --adapter my-adapter
+
+# With custom query
+evalview validate-adapter --endpoint http://localhost:8000 --adapter my-adapter --query "Hello"
+```
+
 ## Testing Your Changes
 
 ### Manual Testing

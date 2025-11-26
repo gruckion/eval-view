@@ -64,6 +64,7 @@ class LangGraphAdapter(AgentAdapter):
         self.verbose = verbose
         self.model_config = model_config or {}
         self.assistant_id = assistant_id or "agent"  # Default assistant ID
+        self._last_raw_response = None  # For debug mode
 
         # Auto-detect Cloud API if not specified
         if use_cloud_api is None:

@@ -569,3 +569,182 @@ class TestEvaluationResult:
                 trace=None,
                 timestamp=datetime.now(),
             )
+
+
+# ============================================================================
+# Type Coercion Validator Tests
+# ============================================================================
+
+
+class TestStepMetricsCoercion:
+    """Tests for StepMetrics type coercion validators."""
+
+    def test_coerce_none_latency_to_zero(self):
+        """Test that None latency is coerced to 0.0."""
+        metrics = StepMetrics(latency=None, cost=0.01)
+        assert metrics.latency == 0.0
+
+    def test_coerce_none_cost_to_zero(self):
+        """Test that None cost is coerced to 0.0."""
+        metrics = StepMetrics(latency=1000.0, cost=None)
+        assert metrics.cost == 0.0
+
+    def test_default_latency_and_cost(self):
+        """Test that latency and cost default to 0.0."""
+        metrics = StepMetrics()
+        assert metrics.latency == 0.0
+        assert metrics.cost == 0.0
+
+    def test_coerce_int_tokens_to_token_usage(self):
+        """Test that int tokens is coerced to TokenUsage."""
+        metrics = StepMetrics(latency=1000.0, cost=0.01, tokens=1500)
+        assert isinstance(metrics.tokens, TokenUsage)
+        assert metrics.tokens.output_tokens == 1500
+        assert metrics.tokens.input_tokens == 0
+        assert metrics.tokens.cached_tokens == 0
+
+    def test_coerce_dict_tokens_to_token_usage(self):
+        """Test that dict tokens is coerced to TokenUsage."""
+        metrics = StepMetrics(
+            latency=1000.0,
+            cost=0.01,
+            tokens={"input_tokens": 100, "output_tokens": 200, "cached_tokens": 50},
+        )
+        assert isinstance(metrics.tokens, TokenUsage)
+        assert metrics.tokens.input_tokens == 100
+        assert metrics.tokens.output_tokens == 200
+        assert metrics.tokens.cached_tokens == 50
+
+    def test_token_usage_passes_through(self):
+        """Test that TokenUsage object passes through unchanged."""
+        token_usage = TokenUsage(input_tokens=100, output_tokens=200)
+        metrics = StepMetrics(latency=1000.0, cost=0.01, tokens=token_usage)
+        assert metrics.tokens is token_usage
+
+    def test_invalid_tokens_type_raises_error(self):
+        """Test that invalid tokens type raises ValueError."""
+        with pytest.raises(ValidationError) as exc_info:
+            StepMetrics(latency=1000.0, cost=0.01, tokens="invalid")
+        assert "TokenUsage, dict, or int" in str(exc_info.value)
+
+    def test_invalid_latency_type_raises_error(self):
+        """Test that invalid latency type raises ValueError."""
+        with pytest.raises(ValidationError) as exc_info:
+            StepMetrics(latency="not_a_number", cost=0.01)
+        assert "numeric value" in str(exc_info.value)
+
+
+class TestExecutionMetricsCoercion:
+    """Tests for ExecutionMetrics type coercion validators."""
+
+    def test_coerce_int_total_tokens_to_token_usage(self):
+        """Test that int total_tokens is coerced to TokenUsage."""
+        metrics = ExecutionMetrics(total_cost=0.05, total_latency=3000.0, total_tokens=1500)
+        assert isinstance(metrics.total_tokens, TokenUsage)
+        assert metrics.total_tokens.output_tokens == 1500
+        assert metrics.total_tokens.input_tokens == 0
+
+    def test_coerce_dict_total_tokens_to_token_usage(self):
+        """Test that dict total_tokens is coerced to TokenUsage."""
+        metrics = ExecutionMetrics(
+            total_cost=0.05,
+            total_latency=3000.0,
+            total_tokens={"input_tokens": 500, "output_tokens": 1000},
+        )
+        assert isinstance(metrics.total_tokens, TokenUsage)
+        assert metrics.total_tokens.input_tokens == 500
+        assert metrics.total_tokens.output_tokens == 1000
+
+    def test_token_usage_passes_through(self):
+        """Test that TokenUsage object passes through unchanged."""
+        token_usage = TokenUsage(input_tokens=500, output_tokens=1000)
+        metrics = ExecutionMetrics(
+            total_cost=0.05, total_latency=3000.0, total_tokens=token_usage
+        )
+        assert metrics.total_tokens is token_usage
+
+    def test_none_total_tokens_remains_none(self):
+        """Test that None total_tokens remains None."""
+        metrics = ExecutionMetrics(total_cost=0.05, total_latency=3000.0, total_tokens=None)
+        assert metrics.total_tokens is None
+
+    def test_invalid_total_tokens_type_raises_error(self):
+        """Test that invalid total_tokens type raises ValueError."""
+        with pytest.raises(ValidationError) as exc_info:
+            ExecutionMetrics(total_cost=0.05, total_latency=3000.0, total_tokens="invalid")
+        assert "TokenUsage, dict, or int" in str(exc_info.value)
+
+
+class TestExecutionTraceCoercion:
+    """Tests for ExecutionTrace datetime coercion validators."""
+
+    def test_coerce_iso_string_to_datetime(self):
+        """Test that ISO format string is coerced to datetime."""
+        trace = ExecutionTrace(
+            session_id="test-123",
+            start_time="2025-01-15T10:30:00",
+            end_time="2025-01-15T10:30:05",
+            steps=[],
+            final_output="test output",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=5000.0),
+        )
+        assert isinstance(trace.start_time, datetime)
+        assert isinstance(trace.end_time, datetime)
+        assert trace.start_time.year == 2025
+        assert trace.start_time.month == 1
+        assert trace.start_time.day == 15
+        assert trace.start_time.hour == 10
+        assert trace.start_time.minute == 30
+
+    def test_coerce_iso_string_with_timezone(self):
+        """Test that ISO format with timezone is coerced correctly."""
+        trace = ExecutionTrace(
+            session_id="test-123",
+            start_time="2025-01-15T10:30:00+00:00",
+            end_time="2025-01-15T10:30:05+00:00",
+            steps=[],
+            final_output="test output",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=5000.0),
+        )
+        assert isinstance(trace.start_time, datetime)
+        assert trace.start_time.tzinfo is not None
+
+    def test_coerce_iso_string_with_z_timezone(self):
+        """Test that ISO format with Z timezone is coerced correctly."""
+        trace = ExecutionTrace(
+            session_id="test-123",
+            start_time="2025-01-15T10:30:00Z",
+            end_time="2025-01-15T10:30:05Z",
+            steps=[],
+            final_output="test output",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=5000.0),
+        )
+        assert isinstance(trace.start_time, datetime)
+
+    def test_datetime_passes_through(self):
+        """Test that datetime object passes through unchanged."""
+        start = datetime(2025, 1, 15, 10, 30, 0)
+        end = datetime(2025, 1, 15, 10, 30, 5)
+        trace = ExecutionTrace(
+            session_id="test-123",
+            start_time=start,
+            end_time=end,
+            steps=[],
+            final_output="test output",
+            metrics=ExecutionMetrics(total_cost=0.0, total_latency=5000.0),
+        )
+        assert trace.start_time is start
+        assert trace.end_time is end
+
+    def test_invalid_datetime_string_raises_error(self):
+        """Test that invalid datetime string raises ValueError."""
+        with pytest.raises(ValidationError) as exc_info:
+            ExecutionTrace(
+                session_id="test-123",
+                start_time="not-a-date",
+                end_time="2025-01-15T10:30:05",
+                steps=[],
+                final_output="test output",
+                metrics=ExecutionMetrics(total_cost=0.0, total_latency=5000.0),
+            )
+        assert "Invalid datetime format" in str(exc_info.value)

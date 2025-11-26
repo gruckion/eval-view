@@ -15,6 +15,7 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
+    TokenUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -216,26 +217,31 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         """Calculate execution metrics from run."""
         total_latency = (end_time - start_time).total_seconds() * 1000
 
-        # OpenAI provides usage
-        total_tokens = None
+        # OpenAI provides usage - convert to TokenUsage object
+        token_usage = None
         if hasattr(run, "usage") and run.usage:
-            total_tokens = run.usage.total_tokens
+            token_usage = TokenUsage(
+                input_tokens=getattr(run.usage, "prompt_tokens", 0),
+                output_tokens=getattr(run.usage, "completion_tokens", 0),
+                cached_tokens=0,
+            )
 
         # Estimate cost based on model and tokens
         # This is approximate - adjust pricing as needed
         total_cost = 0.0
-        if total_tokens and hasattr(run, "model"):
+        if token_usage and hasattr(run, "model"):
             model = run.model
+            total_token_count = token_usage.total_tokens
             # Rough estimates - update with actual pricing
             if "gpt-4" in model:
-                total_cost = (total_tokens / 1000) * 0.03  # $0.03 per 1K tokens
+                total_cost = (total_token_count / 1000) * 0.03  # $0.03 per 1K tokens
             elif "gpt-3.5" in model:
-                total_cost = (total_tokens / 1000) * 0.002  # $0.002 per 1K tokens
+                total_cost = (total_token_count / 1000) * 0.002  # $0.002 per 1K tokens
 
         return ExecutionMetrics(
             total_cost=total_cost,
             total_latency=total_latency,
-            total_tokens=total_tokens,
+            total_tokens=token_usage,
         )
 
     async def health_check(self) -> bool:

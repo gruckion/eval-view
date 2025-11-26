@@ -46,8 +46,22 @@ def main():
     default=True,
     help="Interactive setup (default: True)",
 )
-def init(dir: str, interactive: bool):
+@click.option(
+    "--wizard",
+    is_flag=True,
+    help="Run auto-detection wizard to find and configure agents",
+)
+def init(dir: str, interactive: bool, wizard: bool):
     """Initialize EvalView in the current directory."""
+    if wizard:
+        asyncio.run(_init_wizard_async(dir))
+        return
+
+    _init_standard(dir, interactive)
+
+
+def _init_standard(dir: str, interactive: bool):
+    """Standard init flow (non-wizard)."""
     console.print("[blue]━━━ EvalView Setup ━━━[/blue]\n")
 
     base_path = Path(dir)
@@ -198,6 +212,285 @@ thresholds:
     console.print("  3. Run: evalview run\n")
 
 
+async def _init_wizard_async(dir: str):
+    """Interactive wizard to auto-detect and configure agents."""
+    import httpx
+
+    console.print("[blue]━━━ EvalView Setup Wizard ━━━[/blue]\n")
+    console.print("[cyan]🔍 Auto-detecting agent servers...[/cyan]\n")
+
+    base_path = Path(dir)
+
+    # Create directories
+    (base_path / ".evalview").mkdir(exist_ok=True)
+    (base_path / "tests" / "test-cases").mkdir(parents=True, exist_ok=True)
+
+    # Common ports and endpoints to scan
+    common_ports = [8000, 2024, 3000, 8080, 5000, 8888, 7860]
+    common_patterns = [
+        ("langgraph", "LangGraph Cloud", "/ok", "GET"),
+        ("langgraph", "LangGraph Cloud", "/info", "GET"),
+        ("langgraph", "LangGraph", "/invoke", "POST"),
+        ("langgraph", "LangGraph", "/api/chat", "POST"),
+        ("http", "LangServe", "/agent", "POST"),
+        ("streaming", "LangServe Streaming", "/agent/stream", "POST"),
+        ("streaming", "TapeScope", "/api/unifiedchat", "POST"),
+        ("crewai", "CrewAI", "/crew", "POST"),
+        ("http", "FastAPI", "/api/agent", "POST"),
+        ("http", "FastAPI", "/chat", "POST"),
+    ]
+
+    detected_agents = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Scanning ports...", total=None)
+
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            for port in common_ports:
+                progress.update(task, description=f"Scanning port {port}...")
+
+                for adapter_type, framework_name, path, method in common_patterns:
+                    url = f"http://127.0.0.1:{port}{path}"
+
+                    try:
+                        if method == "GET":
+                            response = await client.get(url)
+                        else:
+                            response = await client.post(
+                                url,
+                                json={
+                                    "query": "test",
+                                    "message": "test",
+                                    "messages": [{"role": "user", "content": "test"}],
+                                },
+                                headers={"Content-Type": "application/json"},
+                            )
+
+                        if response.status_code in [200, 201, 422]:
+                            content_type = response.headers.get("content-type", "")
+                            if not content_type.startswith("application/json"):
+                                continue
+
+                            # Try to detect actual adapter from response
+                            detected_adapter = adapter_type
+                            response_info = {}
+                            try:
+                                data = response.json()
+                                response_info = {"keys": list(data.keys())[:5]}
+
+                                # Refine detection based on response
+                                if "messages" in data or "thread_id" in data:
+                                    detected_adapter = "langgraph"
+                                elif "tasks" in data or "crew_id" in data or "crew" in data:
+                                    detected_adapter = "crewai"
+                            except Exception:
+                                pass
+
+                            # For LangGraph Cloud health endpoints, use base URL
+                            endpoint_url = url
+                            if detected_adapter == "langgraph" and (
+                                path == "/ok" or path == "/info"
+                            ):
+                                endpoint_url = f"http://127.0.0.1:{port}"
+
+                            detected_agents.append({
+                                "port": port,
+                                "path": path,
+                                "url": endpoint_url,
+                                "adapter": detected_adapter,
+                                "framework": framework_name,
+                                "response_info": response_info,
+                            })
+
+                    except (httpx.ConnectError, httpx.TimeoutException, Exception):
+                        continue
+
+    # Show results
+    if not detected_agents:
+        console.print("[yellow]⚠️  No agent servers detected.[/yellow]\n")
+        console.print("Make sure your agent server is running on one of these ports:")
+        console.print(f"  {', '.join(str(p) for p in common_ports)}\n")
+        console.print("[blue]To start a LangGraph agent:[/blue]")
+        console.print("  langgraph dev  # Runs on port 2024")
+        console.print()
+        console.print("[blue]Or run standard init:[/blue]")
+        console.print("  evalview init")
+        return
+
+    # Deduplicate by port (prefer more specific detections)
+    unique_agents = {}
+    for agent in detected_agents:
+        port = agent["port"]
+        # Prefer non-health-check endpoints
+        if port not in unique_agents or agent["path"] not in ["/ok", "/info"]:
+            unique_agents[port] = agent
+
+    detected_agents = list(unique_agents.values())
+
+    console.print(f"[green]✅ Found {len(detected_agents)} agent server(s)![/green]\n")
+
+    # Show detected agents
+    for i, agent in enumerate(detected_agents, 1):
+        console.print(f"  [{i}] [bold]{agent['framework']}[/bold] on port {agent['port']}")
+        console.print(f"      Endpoint: {agent['url']}")
+        console.print(f"      Adapter: {agent['adapter']}")
+        if agent.get("response_info", {}).get("keys"):
+            console.print(f"      Response keys: {agent['response_info']['keys']}")
+        console.print()
+
+    # Let user choose if multiple detected
+    selected_agent = detected_agents[0]
+    if len(detected_agents) > 1:
+        console.print("[bold]Which agent should EvalView connect to?[/bold]")
+        choice = click.prompt(
+            "Enter number",
+            type=int,
+            default=1,
+        )
+        if 1 <= choice <= len(detected_agents):
+            selected_agent = detected_agents[choice - 1]
+
+    console.print()
+    console.print(f"[cyan]Configuring for {selected_agent['framework']}...[/cyan]\n")
+
+    # Create config file
+    config_path = base_path / ".evalview" / "config.yaml"
+    config_content = f"""# EvalView Configuration
+# Auto-generated by wizard
+
+adapter: {selected_agent['adapter']}
+endpoint: {selected_agent['url']}
+timeout: 30.0
+headers: {{}}
+
+# Enable for local development (SSRF protection disabled)
+allow_private_urls: true
+
+# Model configuration
+model:
+  name: gpt-4o-mini
+  # Uses standard OpenAI pricing
+  # Override with custom pricing if needed:
+  # pricing:
+  #   input_per_1m: 0.15
+  #   output_per_1m: 0.60
+  #   cached_per_1m: 0.075
+"""
+
+    config_path.write_text(config_content)
+    console.print("[green]✅ Created .evalview/config.yaml[/green]")
+
+    # Create a sample test case tailored to the detected framework
+    example_path = base_path / "tests" / "test-cases" / "example.yaml"
+    if not example_path.exists():
+        if selected_agent["adapter"] == "langgraph":
+            example_content = """name: "LangGraph Basic Test"
+description: "Test basic agent functionality"
+
+input:
+  query: "What is 2+2?"
+  context: {}
+
+expected:
+  tools: []  # Add expected tools if your agent uses them
+  output:
+    contains:
+      - "4"
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.10
+  max_latency: 10000
+"""
+        elif selected_agent["adapter"] == "crewai":
+            example_content = """name: "CrewAI Basic Test"
+description: "Test CrewAI agent execution"
+
+input:
+  query: "Research the weather in New York"
+  context: {}
+
+expected:
+  tools: []  # CrewAI auto-detects tools from tasks
+  output:
+    contains:
+      - "weather"
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.50
+  max_latency: 60000  # CrewAI crews may take longer
+"""
+        else:
+            example_content = """name: "Agent Basic Test"
+description: "Test basic agent functionality"
+
+input:
+  query: "Hello, how are you?"
+  context: {}
+
+expected:
+  tools: []
+  output:
+    contains: []
+    not_contains:
+      - "error"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.10
+  max_latency: 10000
+"""
+        example_path.write_text(example_content)
+        console.print("[green]✅ Created tests/test-cases/example.yaml[/green]")
+    else:
+        console.print("[yellow]⚠️  tests/test-cases/example.yaml already exists[/yellow]")
+
+    # Test connection
+    console.print()
+    if click.confirm("Test the connection now?", default=True):
+        console.print("\n[cyan]Testing connection...[/cyan]")
+
+        try:
+            # Import adapter registry
+            from evalview.adapters.registry import AdapterRegistry
+
+            test_adapter = AdapterRegistry.create(
+                name=selected_agent["adapter"],
+                endpoint=selected_agent["url"],
+                timeout=10.0,
+                allow_private_urls=True,
+            )
+
+            trace = await test_adapter.execute("What is 2+2?")
+
+            console.print("[green]✅ Connection successful![/green]\n")
+            console.print(f"  Response: {trace.final_output[:100]}{'...' if len(trace.final_output) > 100 else ''}")
+            console.print(f"  Steps: {len(trace.steps)}")
+            console.print(f"  Latency: {trace.metrics.total_latency:.0f}ms")
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Connection test failed: {e}[/yellow]")
+            console.print("[dim]The config has been saved - you can fix the issue and try again.[/dim]")
+
+    console.print()
+    console.print("[blue]━━━ Setup Complete! ━━━[/blue]\n")
+    console.print("[bold]Next steps:[/bold]")
+    console.print("  1. Edit tests/test-cases/example.yaml with your test cases")
+    console.print("  2. Run: evalview run --verbose")
+    console.print()
+    console.print("[dim]Tip: Use 'evalview validate-adapter --endpoint URL' to debug adapter issues[/dim]\n")
+
+
 @main.command()
 @click.option(
     "--pattern",
@@ -235,6 +528,11 @@ thresholds:
     is_flag=True,
     help="Compare results against baseline and show regressions",
 )
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Show detailed debug info: raw API response, parsed trace, type conversions",
+)
 def run(
     pattern: str,
     test: tuple,
@@ -243,9 +541,10 @@ def run(
     verbose: bool,
     track: bool,
     compare_baseline: bool,
+    debug: bool,
 ):
     """Run test cases against the agent."""
-    asyncio.run(_run_async(pattern, test, filter, output, verbose, track, compare_baseline))
+    asyncio.run(_run_async(pattern, test, filter, output, verbose, track, compare_baseline, debug))
 
 
 async def _run_async(
@@ -256,10 +555,16 @@ async def _run_async(
     verbose: bool,
     track: bool,
     compare_baseline: bool,
+    debug: bool = False,
 ):
     """Async implementation of run command."""
     import fnmatch
+    import json as json_module
     from evalview.tracking import RegressionTracker
+
+    if debug:
+        console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
+        verbose = True  # Debug implies verbose
 
     if verbose:
         console.print("[dim]🔍 Verbose mode enabled[/dim]\n")
@@ -489,6 +794,50 @@ async def _run_async(
 
                 # Execute agent
                 trace = await test_adapter.execute(test_case.input.query, test_case.input.context)
+
+                # Show debug information if enabled
+                if debug:
+                    console.print(f"\n[cyan]{'─' * 60}[/cyan]")
+                    console.print(f"[cyan]DEBUG: {test_case.name}[/cyan]")
+                    console.print(f"[cyan]{'─' * 60}[/cyan]\n")
+
+                    # Show raw response if available
+                    if hasattr(test_adapter, '_last_raw_response') and test_adapter._last_raw_response:
+                        console.print("[bold]Raw API Response:[/bold]")
+                        try:
+                            raw_json = json_module.dumps(
+                                test_adapter._last_raw_response,
+                                indent=2,
+                                default=str
+                            )[:2000]
+                            console.print(f"[dim]{raw_json}[/dim]")
+                            if len(json_module.dumps(test_adapter._last_raw_response, default=str)) > 2000:
+                                console.print("[dim]... (truncated)[/dim]")
+                        except Exception:
+                            console.print(f"[dim]{str(test_adapter._last_raw_response)[:500]}[/dim]")
+                        console.print()
+
+                    # Show parsed ExecutionTrace
+                    console.print("[bold]Parsed ExecutionTrace:[/bold]")
+                    console.print(f"  Session ID: {trace.session_id}")
+                    console.print(f"  Duration: {trace.start_time} → {trace.end_time}")
+                    console.print(f"  Steps: {len(trace.steps)}")
+                    for i, step in enumerate(trace.steps):
+                        console.print(f"    [{i+1}] {step.tool_name}")
+                        console.print(f"        params: {str(step.parameters)[:100]}")
+                        console.print(f"        metrics: latency={step.metrics.latency:.1f}ms, cost=${step.metrics.cost:.4f}")
+                        if step.metrics.tokens:
+                            console.print(f"        tokens: in={step.metrics.tokens.input_tokens}, out={step.metrics.tokens.output_tokens}")
+                    console.print(f"  Final Output: {trace.final_output[:200]}{'...' if len(trace.final_output) > 200 else ''}")
+                    console.print()
+
+                    # Show aggregated metrics
+                    console.print("[bold]Aggregated Metrics:[/bold]")
+                    console.print(f"  Total Cost: ${trace.metrics.total_cost:.4f}")
+                    console.print(f"  Total Latency: {trace.metrics.total_latency:.0f}ms")
+                    if trace.metrics.total_tokens:
+                        console.print(f"  Total Tokens: in={trace.metrics.total_tokens.input_tokens}, out={trace.metrics.total_tokens.output_tokens}, cached={trace.metrics.total_tokens.cached_tokens}")
+                    console.print()
 
                 # Evaluate (pass adapter name for display)
                 adapter_name = getattr(test_adapter, 'name', None)
@@ -1010,6 +1359,143 @@ async def _connect_async(endpoint: Optional[str]):
         console.print("  evalview connect")
         console.print("  # or specify endpoint:")
         console.print("  evalview connect --endpoint http://127.0.0.1:YOUR_PORT/api/chat")
+
+
+@main.command("validate-adapter")
+@click.option(
+    "--endpoint",
+    required=True,
+    help="Endpoint URL to validate",
+)
+@click.option(
+    "--adapter",
+    default="http",
+    type=click.Choice(["http", "langgraph", "crewai", "streaming", "tapescope"]),
+    help="Adapter type to use (default: http)",
+)
+@click.option(
+    "--query",
+    default="What is 2+2?",
+    help="Test query to send (default: 'What is 2+2?')",
+)
+@click.option(
+    "--timeout",
+    default=30.0,
+    type=float,
+    help="Request timeout in seconds (default: 30)",
+)
+def validate_adapter(endpoint: str, adapter: str, query: str, timeout: float):
+    """Validate an adapter endpoint and show detailed response analysis."""
+    asyncio.run(_validate_adapter_async(endpoint, adapter, query, timeout))
+
+
+async def _validate_adapter_async(endpoint: str, adapter_type: str, query: str, timeout: float):
+    """Async implementation of validate-adapter command."""
+    import json as json_module
+
+    console.print("[blue]🔍 Validating adapter endpoint...[/blue]\n")
+    console.print(f"  Endpoint: {endpoint}")
+    console.print(f"  Adapter:  {adapter_type}")
+    console.print(f"  Timeout:  {timeout}s")
+    console.print(f"  Query:    {query}")
+    console.print()
+
+    # Create adapter based on type
+    try:
+        if adapter_type == "langgraph":
+            test_adapter = LangGraphAdapter(
+                endpoint=endpoint,
+                timeout=timeout,
+                verbose=True,
+                allow_private_urls=True,
+            )
+        elif adapter_type == "crewai":
+            test_adapter = CrewAIAdapter(
+                endpoint=endpoint,
+                timeout=timeout,
+                verbose=True,
+                allow_private_urls=True,
+            )
+        elif adapter_type in ["streaming", "tapescope"]:
+            test_adapter = TapeScopeAdapter(
+                endpoint=endpoint,
+                timeout=timeout,
+                verbose=True,
+                allow_private_urls=True,
+            )
+        else:
+            test_adapter = HTTPAdapter(
+                endpoint=endpoint,
+                timeout=timeout,
+                allow_private_urls=True,
+            )
+
+        console.print("[cyan]Executing test query...[/cyan]")
+
+        # Execute
+        trace = await test_adapter.execute(query)
+
+        console.print("[green]✅ Adapter validation successful![/green]\n")
+
+        # Show results
+        console.print("[bold]Execution Summary:[/bold]")
+        console.print(f"  Session ID: {trace.session_id}")
+        console.print(f"  Steps captured: {len(trace.steps)}")
+
+        if trace.steps:
+            console.print("\n[bold]Tools Used:[/bold]")
+            for i, step in enumerate(trace.steps):
+                console.print(f"  [{i+1}] {step.tool_name}")
+                if step.parameters:
+                    params_str = str(step.parameters)[:80]
+                    console.print(f"      params: {params_str}{'...' if len(str(step.parameters)) > 80 else ''}")
+
+        console.print("\n[bold]Metrics:[/bold]")
+        console.print(f"  Total Cost: ${trace.metrics.total_cost:.4f}")
+        console.print(f"  Total Latency: {trace.metrics.total_latency:.0f}ms")
+        if trace.metrics.total_tokens:
+            console.print(f"  Total Tokens: {trace.metrics.total_tokens.total_tokens}")
+            console.print(f"    - Input: {trace.metrics.total_tokens.input_tokens}")
+            console.print(f"    - Output: {trace.metrics.total_tokens.output_tokens}")
+
+        console.print("\n[bold]Final Output:[/bold]")
+        output_preview = trace.final_output[:500]
+        console.print(f"  {output_preview}{'...' if len(trace.final_output) > 500 else ''}")
+
+        # Show raw response if available
+        if hasattr(test_adapter, '_last_raw_response') and test_adapter._last_raw_response:
+            console.print("\n[bold]Raw API Response (first 1000 chars):[/bold]")
+            try:
+                raw_json = json_module.dumps(test_adapter._last_raw_response, indent=2, default=str)[:1000]
+                console.print(f"[dim]{raw_json}[/dim]")
+            except Exception:
+                console.print(f"[dim]{str(test_adapter._last_raw_response)[:500]}[/dim]")
+
+        # Warnings
+        warnings = []
+        if not trace.steps:
+            warnings.append("No tool calls detected - ensure your agent uses tools")
+        if trace.metrics.total_cost == 0:
+            warnings.append("Cost is 0 - token tracking may not be configured")
+        if not trace.metrics.total_tokens:
+            warnings.append("No token usage data - check adapter response format")
+
+        if warnings:
+            console.print("\n[yellow]Warnings:[/yellow]")
+            for w in warnings:
+                console.print(f"  ⚠️  {w}")
+
+        console.print()
+
+    except Exception as e:
+        console.print(f"[red]❌ Validation failed: {e}[/red]\n")
+        console.print("[yellow]Troubleshooting tips:[/yellow]")
+        console.print("  1. Check if the agent server is running")
+        console.print("  2. Verify the endpoint URL is correct")
+        console.print("  3. Try a different adapter type")
+        console.print("  4. Increase timeout with --timeout")
+        console.print()
+        console.print("[dim]For detailed error info, check the server logs.[/dim]")
 
 
 @main.command()
