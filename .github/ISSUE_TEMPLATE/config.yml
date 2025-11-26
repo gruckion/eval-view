@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Question or Discussion
+  - name: Documentation
+    url: https://github.com/hidai25/EvalView#readme
+    about: Check the README for setup and usage guides
+  - name: Discussions
     url: https://github.com/hidai25/EvalView/discussions
-    about: Ask questions or discuss ideas with the community
-  - name: Security Vulnerability
-    url: https://github.com/hidai25/EvalView/security/advisories/new
-    about: Report a security vulnerability (private)
+    about: Ask questions and share ideas

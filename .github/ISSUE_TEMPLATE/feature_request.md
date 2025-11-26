@@ -1,63 +1,33 @@
 ---
 name: Feature Request
-about: Suggest an idea for EvalView
+about: Suggest a new feature or improvement
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
 ---
 
-## Feature Description
-
-A clear and concise description of the feature you'd like to see.
-
-## Problem or Use Case
-
-What problem does this feature solve? Is your feature request related to a problem?
-
-Example: "I'm always frustrated when [...]"
+## Problem / Use Case
+Describe the problem you're trying to solve or the use case for this feature.
 
 ## Proposed Solution
-
-A clear and concise description of what you want to happen.
-
-## Example Usage
-
-Show how you envision using this feature:
-
-```yaml
-# Example YAML test case showing new feature
-name: "Example with new feature"
-# ...
-```
-
-Or code example:
-
-```python
-# Example code showing new feature
-```
+Describe how you'd like this feature to work.
 
 ## Alternatives Considered
+Any alternative solutions or workarounds you've considered.
 
-Have you considered any alternative solutions or features? What are they?
+## Example Usage
+```bash
+# How would this feature be used?
+evalview new-command --option value
+```
 
-## Agent Framework
-
-Which agent framework(s) would this feature benefit?
-
-- [ ] All frameworks (generic)
-- [ ] LangGraph
-- [ ] CrewAI
-- [ ] OpenAI Assistants
-- [ ] Custom HTTP adapters
-- [ ] Other: [specify]
+Or in YAML:
+```yaml
+# Example test case using new feature
+name: "Test with new feature"
+new_field: value
+```
 
 ## Additional Context
-
-Add any other context, mockups, or screenshots about the feature request here.
-
-## Would you be willing to contribute this feature?
-
-- [ ] Yes, I can submit a PR
-- [ ] Yes, with guidance
-- [ ] No, but I can help test it
-- [ ] No
+- Is this related to a specific adapter or framework?
+- Any relevant documentation or examples from other tools?
