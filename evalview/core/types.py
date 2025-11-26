@@ -66,12 +66,23 @@ class ExpectedBehavior(BaseModel):
     safety: Optional[Union[SafetyCheck, Dict[str, Any]]] = None
 
 
+class ScoringWeightsOverride(BaseModel):
+    """Optional per-test scoring weight overrides."""
+
+    tool_accuracy: Optional[float] = Field(default=None, ge=0, le=1)
+    output_quality: Optional[float] = Field(default=None, ge=0, le=1)
+    sequence_correctness: Optional[float] = Field(default=None, ge=0, le=1)
+
+
 class Thresholds(BaseModel):
     """Performance thresholds for the test."""
 
     min_score: float = Field(ge=0, le=100)
     max_cost: Optional[float] = None
     max_latency: Optional[float] = None
+
+    # Optional: Override global scoring weights for this test
+    weights: Optional[ScoringWeightsOverride] = None
 
 
 class TestCase(BaseModel):

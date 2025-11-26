@@ -84,12 +84,16 @@ Traditional testing doesn't catch this. EvalView lets you write repeatable tests
 ## Features
 
 - ✅ **YAML-based test cases** - Write readable, maintainable test definitions
+- ⚡ **Parallel execution** - Run tests concurrently (8x faster by default)
 - 📊 **Multiple evaluation metrics** - Tool accuracy, sequence correctness, output quality, cost, and latency
 - 🤖 **LLM-as-judge** - Automated output quality assessment using GPT-4
 - 💰 **Cost tracking** - Automatic cost calculation based on token usage with GPT-5 family pricing
 - 🔌 **Universal adapters** - Works with any HTTP or streaming API
 - 🎨 **Rich console output** - Beautiful, informative test results
-- 📁 **JSON reports** - Structured results for CI/CD integration
+- 📁 **JSON & HTML reports** - Interactive HTML reports with Plotly charts
+- 🔄 **Retry logic** - Automatic retries with exponential backoff for flaky tests
+- 👀 **Watch mode** - Re-run tests automatically on file changes
+- ⚖️ **Configurable weights** - Customize scoring weights globally or per-test
 - 🐛 **Verbose debugging** - Detailed logging to troubleshoot issues
 - 🗄️ **Database-agnostic** - Works with PostgreSQL, MongoDB, MySQL, Firebase, and more
 
@@ -403,6 +407,50 @@ Your agent endpoint should return JSON with this structure:
 - Provides breakdown by step
 - Fails test if exceeded
 
+### Configurable Scoring Weights
+
+Default weights can be customized globally in `config.yaml`:
+
+```yaml
+scoring:
+  weights:
+    tool_accuracy: 0.35        # 35%
+    output_quality: 0.45       # 45%
+    sequence_correctness: 0.20 # 20%
+```
+
+Or override per-test in individual test files:
+
+```yaml
+thresholds:
+  min_score: 80
+  weights:
+    tool_accuracy: 0.4
+    output_quality: 0.4
+    sequence_correctness: 0.2
+```
+
+> **Note:** Weights must sum to 1.0
+
+## Installation Options
+
+```bash
+# Basic installation
+pip install evalview
+
+# With HTML reports (Plotly charts)
+pip install evalview[reports]
+
+# With watch mode
+pip install evalview[watch]
+
+# All optional features
+pip install evalview[all]
+
+# Development (includes all features + testing tools)
+pip install evalview[dev]
+```
+
 ## CLI Reference
 
 ### `evalview init`
@@ -421,19 +469,45 @@ Run test cases.
 evalview run [OPTIONS]
 
 Options:
-  --pattern TEXT   Test case file pattern (default: *.yaml)
-  --output PATH    Output directory for results (default: .evalview/results)
-  --verbose        Enable verbose logging (shows API requests/responses)
+  --pattern TEXT       Test case file pattern (default: *.yaml)
+  -t, --test TEXT      Run specific test(s) by name (can repeat)
+  -f, --filter TEXT    Filter tests by pattern (e.g., "weather*")
+  --output PATH        Output directory for results (default: .evalview/results)
+  --verbose            Enable verbose logging
+  --debug              Show raw API responses and parsed traces
+
+  # Execution options
+  --sequential         Run tests one at a time (default: parallel)
+  --max-workers N      Max parallel executions (default: 8)
+  --max-retries N      Retry flaky tests N times (default: 0)
+  --retry-delay SECS   Base delay between retries (default: 1.0)
+
+  # Development options
+  --watch              Re-run tests on file changes
+  --html-report PATH   Generate interactive HTML report
+
+  # Regression tracking
+  --track              Track results for regression analysis
+  --compare-baseline   Compare against baseline and show regressions
 ```
 
-**Debugging**: Use `--verbose` to see detailed logs of what's happening:
+**Examples:**
 
 ```bash
-# See exactly what the API is returning
-evalview run --verbose
+# Run all tests in parallel (default)
+evalview run
 
-# Or use environment variable
-DEBUG=1 evalview run
+# Run specific tests
+evalview run --filter "stock*" --verbose
+
+# With retry for flaky tests
+evalview run --max-retries 3
+
+# Watch mode for development
+evalview run --watch
+
+# Generate HTML report
+evalview run --html-report report.html
 ```
 
 See [docs/DEBUGGING.md](docs/DEBUGGING.md) for troubleshooting guide.
@@ -446,7 +520,21 @@ Generate report from results.
 evalview report RESULTS_FILE [OPTIONS]
 
 Options:
-  --detailed  Show detailed results for each test case
+  --detailed      Show detailed results for each test case
+  --html PATH     Generate interactive HTML report with charts
+```
+
+**Example:**
+
+```bash
+# Console summary
+evalview report .evalview/results/20241118_004830.json
+
+# Detailed console output
+evalview report .evalview/results/20241118_004830.json --detailed
+
+# Interactive HTML report
+evalview report .evalview/results/20241118_004830.json --html report.html
 ```
 
 ## Cost Tracking
@@ -535,21 +623,33 @@ evalview/
 ├── core/
 │   ├── types.py           # Pydantic models (ExecutionTrace, TokenUsage, etc.)
 │   ├── loader.py          # Test case loader
-│   └── pricing.py         # Model pricing & cost calculation
+│   ├── pricing.py         # Model pricing & cost calculation
+│   ├── config.py          # Configuration models (ScoringWeights, RetryConfig)
+│   ├── parallel.py        # Parallel test execution
+│   ├── retry.py           # Retry logic with exponential backoff
+│   └── watcher.py         # File watcher for watch mode
 ├── adapters/
 │   ├── base.py            # AgentAdapter interface
 │   ├── http_adapter.py    # Generic HTTP adapter
+│   ├── langgraph_adapter.py  # LangGraph / LangGraph Cloud
+│   ├── crewai_adapter.py  # CrewAI agents
 │   └── tapescope_adapter.py  # Streaming JSONL adapter
 ├── evaluators/
 │   ├── tool_call_evaluator.py
 │   ├── sequence_evaluator.py
 │   ├── output_evaluator.py
+│   ├── hallucination_evaluator.py
+│   ├── safety_evaluator.py
 │   ├── cost_evaluator.py
 │   ├── latency_evaluator.py
 │   └── evaluator.py       # Main orchestrator
 ├── reporters/
 │   ├── json_reporter.py   # JSON output
-│   └── console_reporter.py  # Console output
+│   ├── console_reporter.py  # Console output
+│   └── html_reporter.py   # Interactive HTML reports
+├── tracking/
+│   ├── database.py        # SQLite tracking database
+│   └── regression.py      # Regression detection
 └── cli.py                 # Click CLI
 ```
 
@@ -732,6 +832,14 @@ EvalView is designed for teams building:
 
 ## Roadmap
 
+**Recently Completed:**
+- [x] Parallel test execution (8x faster by default)
+- [x] Interactive HTML reports with Plotly charts
+- [x] Retry logic with exponential backoff
+- [x] Watch mode for development
+- [x] Configurable scoring weights
+- [x] GitHub Actions CI template
+
 **Coming Soon:**
 - [ ] Multi-run flakiness detection - Run tests N times, track variance, detect non-determinism
 - [ ] Multi-turn conversation testing - Test full conversation flows with context persistence
@@ -742,10 +850,7 @@ EvalView is designed for teams building:
 **Want these?** [Vote in GitHub Discussions](https://github.com/hidai25/EvalView/discussions)
 
 **Also Planned:**
-- [ ] HTML report generator with charts
-- [ ] Parallel test execution for faster runs
 - [ ] Test case templates library
-- [ ] Native LangChain & CrewAI adapters
 - [ ] Custom metric plugins system
 - [ ] Cloud-hosted test runner
 - [ ] Slack/Discord notifications
@@ -758,6 +863,7 @@ Contributions are welcome! Please open an issue or submit a pull request.
 
 | Topic | Description |
 |-------|-------------|
+| [Getting Started](docs/GETTING_STARTED.md) | 5-minute quickstart guide |
 | [Framework Support](docs/FRAMEWORK_SUPPORT.md) | Supported frameworks and compatibility notes |
 | [Cost Tracking](docs/COST_TRACKING.md) | Token usage and cost calculation details |
 | [Debugging Guide](docs/DEBUGGING.md) | Troubleshooting common issues |

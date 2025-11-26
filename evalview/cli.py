@@ -533,6 +533,39 @@ thresholds:
     is_flag=True,
     help="Show detailed debug info: raw API response, parsed trace, type conversions",
 )
+@click.option(
+    "--sequential",
+    is_flag=True,
+    help="Run tests sequentially instead of in parallel (default: parallel)",
+)
+@click.option(
+    "--max-workers",
+    default=8,
+    type=int,
+    help="Maximum parallel test executions (default: 8)",
+)
+@click.option(
+    "--max-retries",
+    default=0,
+    type=int,
+    help="Maximum retries for flaky tests (default: 0 = no retries)",
+)
+@click.option(
+    "--retry-delay",
+    default=1.0,
+    type=float,
+    help="Base delay between retries in seconds (default: 1.0)",
+)
+@click.option(
+    "--watch",
+    is_flag=True,
+    help="Watch test files and re-run on changes",
+)
+@click.option(
+    "--html-report",
+    type=click.Path(),
+    help="Generate HTML report to specified path",
+)
 def run(
     pattern: str,
     test: tuple,
@@ -542,9 +575,18 @@ def run(
     track: bool,
     compare_baseline: bool,
     debug: bool,
+    sequential: bool,
+    max_workers: int,
+    max_retries: int,
+    retry_delay: float,
+    watch: bool,
+    html_report: str,
 ):
     """Run test cases against the agent."""
-    asyncio.run(_run_async(pattern, test, filter, output, verbose, track, compare_baseline, debug))
+    asyncio.run(_run_async(
+        pattern, test, filter, output, verbose, track, compare_baseline, debug,
+        sequential, max_workers, max_retries, retry_delay, watch, html_report
+    ))
 
 
 async def _run_async(
@@ -556,11 +598,20 @@ async def _run_async(
     track: bool,
     compare_baseline: bool,
     debug: bool = False,
+    sequential: bool = False,
+    max_workers: int = 8,
+    max_retries: int = 0,
+    retry_delay: float = 1.0,
+    watch: bool = False,
+    html_report: str = None,
 ):
     """Async implementation of run command."""
     import fnmatch
     import json as json_module
     from evalview.tracking import RegressionTracker
+    from evalview.core.parallel import execute_tests_parallel, ParallelResult
+    from evalview.core.retry import RetryConfig, with_retry, is_retryable_exception
+    from evalview.core.config import ScoringWeights, EvalViewConfig
 
     if debug:
         console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
@@ -571,6 +622,29 @@ async def _run_async(
 
     if track or compare_baseline:
         console.print("[dim]📊 Regression tracking enabled[/dim]\n")
+
+    # Display execution mode
+    if sequential:
+        console.print("[dim]⏳ Running tests sequentially[/dim]\n")
+    else:
+        console.print(f"[dim]⚡ Running tests in parallel (max {max_workers} workers)[/dim]\n")
+
+    if max_retries > 0:
+        console.print(f"[dim]🔄 Retry enabled: up to {max_retries} retries with {retry_delay}s base delay[/dim]\n")
+
+    # Handle watch mode - wrap test execution in a loop
+    if watch:
+        try:
+            from evalview.core.watcher import watch_and_run, WATCHDOG_AVAILABLE
+            if not WATCHDOG_AVAILABLE:
+                console.print("[yellow]⚠️  Watch mode requires watchdog. Install with: pip install watchdog[/yellow]")
+                console.print("[dim]Falling back to single run mode...[/dim]\n")
+                watch = False
+            else:
+                console.print("[dim]👀 Watch mode enabled - press Ctrl+C to stop[/dim]\n")
+        except ImportError:
+            console.print("[yellow]⚠️  Watch mode requires watchdog. Install with: pip install watchdog[/yellow]")
+            watch = False
 
     console.print("[blue]Running test cases...[/blue]\n")
 
@@ -652,8 +726,28 @@ async def _run_async(
             allow_private_urls=allow_private_urls,
         )
 
-    # Initialize evaluator
-    evaluator = Evaluator(openai_api_key=os.getenv("OPENAI_API_KEY"))
+    # Initialize evaluator with configurable weights
+    scoring_weights = None
+    if "scoring" in config and "weights" in config["scoring"]:
+        try:
+            scoring_weights = ScoringWeights(**config["scoring"]["weights"])
+            if verbose:
+                console.print(f"[dim]⚖️  Custom weights: tool={scoring_weights.tool_accuracy}, output={scoring_weights.output_quality}, sequence={scoring_weights.sequence_correctness}[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Invalid scoring weights in config: {e}. Using defaults.[/yellow]")
+
+    evaluator = Evaluator(
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        default_weights=scoring_weights,
+    )
+
+    # Setup retry config
+    retry_config = RetryConfig(
+        max_retries=max_retries,
+        base_delay=retry_delay,
+        exponential=True,
+        jitter=True,
+    )
 
     # Initialize tracker if tracking enabled
     tracker = None
@@ -775,127 +869,161 @@ async def _run_async(
         # Use global adapter
         return adapter
 
+    # Helper function to execute a single test with retry support
+    async def execute_single_test(test_case):
+        """Execute a single test case with optional retry logic."""
+        import httpx
+
+        test_adapter = get_adapter_for_test(test_case)
+
+        async def _execute():
+            return await test_adapter.execute(test_case.input.query, test_case.input.context)
+
+        # Execute with retry if configured
+        if retry_config.max_retries > 0:
+            retry_result = await with_retry(
+                _execute,
+                retry_config,
+                on_retry=lambda attempt, delay, exc: console.print(
+                    f"[yellow]  ↻ Retry {attempt}/{retry_config.max_retries} for {test_case.name} after {delay:.1f}s ({type(exc).__name__})[/yellow]"
+                ) if verbose else None,
+            )
+            if not retry_result.success:
+                raise retry_result.exception
+            trace = retry_result.result
+        else:
+            trace = await _execute()
+
+        # Show debug information if enabled
+        if debug:
+            console.print(f"\n[cyan]{'─' * 60}[/cyan]")
+            console.print(f"[cyan]DEBUG: {test_case.name}[/cyan]")
+            console.print(f"[cyan]{'─' * 60}[/cyan]\n")
+
+            if hasattr(test_adapter, '_last_raw_response') and test_adapter._last_raw_response:
+                console.print("[bold]Raw API Response:[/bold]")
+                try:
+                    raw_json = json_module.dumps(test_adapter._last_raw_response, indent=2, default=str)[:2000]
+                    console.print(f"[dim]{raw_json}[/dim]")
+                    if len(json_module.dumps(test_adapter._last_raw_response, default=str)) > 2000:
+                        console.print("[dim]... (truncated)[/dim]")
+                except Exception:
+                    console.print(f"[dim]{str(test_adapter._last_raw_response)[:500]}[/dim]")
+                console.print()
+
+            console.print("[bold]Parsed ExecutionTrace:[/bold]")
+            console.print(f"  Session ID: {trace.session_id}")
+            console.print(f"  Duration: {trace.start_time} → {trace.end_time}")
+            console.print(f"  Steps: {len(trace.steps)}")
+            for i, step in enumerate(trace.steps):
+                console.print(f"    [{i+1}] {step.tool_name}")
+                console.print(f"        params: {str(step.parameters)[:100]}")
+                console.print(f"        metrics: latency={step.metrics.latency:.1f}ms, cost=${step.metrics.cost:.4f}")
+                if step.metrics.tokens:
+                    console.print(f"        tokens: in={step.metrics.tokens.input_tokens}, out={step.metrics.tokens.output_tokens}")
+            console.print(f"  Final Output: {trace.final_output[:200]}{'...' if len(trace.final_output) > 200 else ''}")
+            console.print()
+            console.print("[bold]Aggregated Metrics:[/bold]")
+            console.print(f"  Total Cost: ${trace.metrics.total_cost:.4f}")
+            console.print(f"  Total Latency: {trace.metrics.total_latency:.0f}ms")
+            if trace.metrics.total_tokens:
+                console.print(f"  Total Tokens: in={trace.metrics.total_tokens.input_tokens}, out={trace.metrics.total_tokens.output_tokens}, cached={trace.metrics.total_tokens.cached_tokens}")
+            console.print()
+
+        # Evaluate
+        adapter_name = getattr(test_adapter, 'name', None)
+        result = await evaluator.evaluate(test_case, trace, adapter_name=adapter_name)
+
+        # Track result if enabled
+        if tracker:
+            if track:
+                tracker.store_result(result)
+            if compare_baseline:
+                regression_report = tracker.compare_to_baseline(result)
+                regression_reports[test_case.name] = regression_report
+
+        return (result.passed, result)
+
     # Run evaluations
     results = []
     passed = 0
     failed = 0
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        for test_case in test_cases:
-            task = progress.add_task(f"Running {test_case.name}...", total=None)
+    if sequential:
+        # Sequential execution (original behavior)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            for test_case in test_cases:
+                task = progress.add_task(f"Running {test_case.name}...", total=None)
 
-            try:
-                # Get adapter for this test (test-specific or global)
-                test_adapter = get_adapter_for_test(test_case)
+                try:
+                    test_passed, result = await execute_single_test(test_case)
+                    results.append(result)
 
-                # Execute agent
-                trace = await test_adapter.execute(test_case.input.query, test_case.input.context)
+                    if test_passed:
+                        passed += 1
+                        progress.update(task, description=f"[green]✅ {test_case.name} - PASSED (score: {result.score})[/green]")
+                    else:
+                        failed += 1
+                        progress.update(task, description=f"[red]❌ {test_case.name} - FAILED (score: {result.score})[/red]")
 
-                # Show debug information if enabled
-                if debug:
-                    console.print(f"\n[cyan]{'─' * 60}[/cyan]")
-                    console.print(f"[cyan]DEBUG: {test_case.name}[/cyan]")
-                    console.print(f"[cyan]{'─' * 60}[/cyan]\n")
-
-                    # Show raw response if available
-                    if hasattr(test_adapter, '_last_raw_response') and test_adapter._last_raw_response:
-                        console.print("[bold]Raw API Response:[/bold]")
-                        try:
-                            raw_json = json_module.dumps(
-                                test_adapter._last_raw_response,
-                                indent=2,
-                                default=str
-                            )[:2000]
-                            console.print(f"[dim]{raw_json}[/dim]")
-                            if len(json_module.dumps(test_adapter._last_raw_response, default=str)) > 2000:
-                                console.print("[dim]... (truncated)[/dim]")
-                        except Exception:
-                            console.print(f"[dim]{str(test_adapter._last_raw_response)[:500]}[/dim]")
-                        console.print()
-
-                    # Show parsed ExecutionTrace
-                    console.print("[bold]Parsed ExecutionTrace:[/bold]")
-                    console.print(f"  Session ID: {trace.session_id}")
-                    console.print(f"  Duration: {trace.start_time} → {trace.end_time}")
-                    console.print(f"  Steps: {len(trace.steps)}")
-                    for i, step in enumerate(trace.steps):
-                        console.print(f"    [{i+1}] {step.tool_name}")
-                        console.print(f"        params: {str(step.parameters)[:100]}")
-                        console.print(f"        metrics: latency={step.metrics.latency:.1f}ms, cost=${step.metrics.cost:.4f}")
-                        if step.metrics.tokens:
-                            console.print(f"        tokens: in={step.metrics.tokens.input_tokens}, out={step.metrics.tokens.output_tokens}")
-                    console.print(f"  Final Output: {trace.final_output[:200]}{'...' if len(trace.final_output) > 200 else ''}")
-                    console.print()
-
-                    # Show aggregated metrics
-                    console.print("[bold]Aggregated Metrics:[/bold]")
-                    console.print(f"  Total Cost: ${trace.metrics.total_cost:.4f}")
-                    console.print(f"  Total Latency: {trace.metrics.total_latency:.0f}ms")
-                    if trace.metrics.total_tokens:
-                        console.print(f"  Total Tokens: in={trace.metrics.total_tokens.input_tokens}, out={trace.metrics.total_tokens.output_tokens}, cached={trace.metrics.total_tokens.cached_tokens}")
-                    console.print()
-
-                # Evaluate (pass adapter name for display)
-                adapter_name = getattr(test_adapter, 'name', None)
-                result = await evaluator.evaluate(test_case, trace, adapter_name=adapter_name)
-                results.append(result)
-
-                # Track result and compare to baseline if enabled
-                if tracker:
-                    if track:
-                        tracker.store_result(result)
-
-                    if compare_baseline:
-                        regression_report = tracker.compare_to_baseline(result)
-                        regression_reports[test_case.name] = regression_report
-
-                if result.passed:
-                    passed += 1
-                    progress.update(
-                        task,
-                        description=f"[green]✅ {test_case.name} - PASSED (score: {result.score})[/green]",
-                    )
-                else:
+                except Exception as e:
+                    import httpx
                     failed += 1
-                    progress.update(
-                        task,
-                        description=f"[red]❌ {test_case.name} - FAILED (score: {result.score})[/red]",
-                    )
+                    error_msg = str(e)
+                    if isinstance(e, httpx.ConnectError):
+                        error_msg = f"Cannot connect to {config['endpoint']}"
+                    elif isinstance(e, httpx.TimeoutException):
+                        error_msg = "Request timeout"
+                    progress.update(task, description=f"[red]❌ {test_case.name} - ERROR: {error_msg}[/red]")
 
-            except Exception as e:
-                import httpx
+                progress.remove_task(task)
+    else:
+        # Parallel execution (new default)
+        completed_tasks = {}
 
+        def on_start(test_name):
+            if verbose:
+                console.print(f"[dim]  ▶ Starting: {test_name}[/dim]")
+
+        def on_complete(test_name, test_passed, result):
+            nonlocal passed, failed
+            if test_passed:
+                passed += 1
+                console.print(f"[green]✅ {test_name} - PASSED (score: {result.score})[/green]")
+            else:
                 failed += 1
+                console.print(f"[red]❌ {test_name} - FAILED (score: {result.score})[/red]")
 
-                # Provide helpful error messages
-                error_msg = str(e)
-                if isinstance(e, httpx.ConnectError):
-                    error_msg = f"Cannot connect to {config['endpoint']}"
-                    console.print(
-                        f"\n[red]❌ Connection Error:[/red] Agent server not reachable at {config['endpoint']}"
-                    )
-                    console.print(
-                        "[yellow]💡 Tip:[/yellow] Run 'evalview connect' to test and configure your endpoint\n"
-                    )
-                elif isinstance(e, httpx.TimeoutException):
-                    error_msg = "Request timeout"
-                    console.print(
-                        f"\n[yellow]⏱️  Timeout:[/yellow] Agent took too long to respond (>{config.get('timeout', 30)}s)"
-                    )
-                    console.print(
-                        "[yellow]💡 Tip:[/yellow] Increase timeout in .evalview/config.yaml or optimize your agent\n"
-                    )
+        def on_error(test_name, exc):
+            nonlocal failed
+            import httpx
+            failed += 1
+            error_msg = str(exc)
+            if isinstance(exc, httpx.ConnectError):
+                error_msg = f"Cannot connect to {config['endpoint']}"
+            elif isinstance(exc, httpx.TimeoutException):
+                error_msg = "Request timeout"
+            console.print(f"[red]❌ {test_name} - ERROR: {error_msg}[/red]")
 
-                progress.update(
-                    task,
-                    description=f"[red]❌ {test_case.name} - ERROR: {error_msg}[/red]",
-                )
+        console.print(f"[dim]Executing {len(test_cases)} tests with up to {max_workers} parallel workers...[/dim]\n")
 
-            progress.remove_task(task)
+        parallel_results = await execute_tests_parallel(
+            test_cases,
+            execute_single_test,
+            max_workers=max_workers,
+            on_start=on_start,
+            on_complete=on_complete,
+            on_error=on_error,
+        )
+
+        # Collect results (maintaining order)
+        for pr in parallel_results:
+            if pr.success and pr.result:
+                results.append(pr.result)
 
     # Print summary
     console.print()
@@ -982,10 +1110,70 @@ async def _run_async(
 
     console.print(f"\n[dim]Results saved to: {results_file}[/dim]\n")
 
+    # Generate HTML report if requested
+    if html_report and results:
+        try:
+            from evalview.reporters.html_reporter import HTMLReporter
+            html_reporter = HTMLReporter()
+            html_path = html_reporter.generate(results, html_report)
+            console.print(f"[dim]📊 HTML report saved to: {html_path}[/dim]\n")
+        except ImportError as e:
+            console.print(f"[yellow]⚠️  Could not generate HTML report: {e}[/yellow]")
+            console.print("[dim]Install with: pip install jinja2 plotly[/dim]\n")
+
     if track:
         console.print("[dim]📊 Results tracked for regression analysis[/dim]")
         console.print("[dim]   View trends: evalview trends[/dim]")
         console.print("[dim]   Set baseline: evalview baseline set[/dim]\n")
+
+    # Watch mode: re-run tests on file changes
+    if watch:
+        from evalview.core.watcher import TestWatcher
+
+        console.print("[cyan]━" * 60 + "[/cyan]")
+        console.print("[cyan]👀 Watching for changes... (Ctrl+C to stop)[/cyan]")
+        console.print("[cyan]━" * 60 + "[/cyan]\n")
+
+        run_count = 1
+
+        async def run_tests_again():
+            nonlocal run_count
+            run_count += 1
+            console.print(f"\n[blue]━━━ Run #{run_count} ━━━[/blue]\n")
+
+            # Re-run the full test suite (simplified re-execution)
+            await _run_async(
+                pattern=pattern,
+                test=test,
+                filter=filter,
+                output=output,
+                verbose=verbose,
+                track=track,
+                compare_baseline=compare_baseline,
+                debug=debug,
+                sequential=sequential,
+                max_workers=max_workers,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                watch=False,  # Prevent infinite nesting
+                html_report=html_report,
+            )
+
+        watcher = TestWatcher(
+            paths=["tests/test-cases", ".evalview"],
+            run_callback=run_tests_again,
+            debounce_seconds=2.0,
+        )
+
+        try:
+            await watcher.start()
+            # Keep running until interrupted
+            while True:
+                await asyncio.sleep(1)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            console.print("\n[yellow]Watch mode stopped.[/yellow]")
+        finally:
+            watcher.stop()
 
 
 @main.command()
@@ -1056,7 +1244,12 @@ async def _list_async(pattern: str, detailed: bool):
     is_flag=True,
     help="Show detailed results for each test case",
 )
-def report(results_file: str, detailed: bool):
+@click.option(
+    "--html",
+    type=click.Path(),
+    help="Generate HTML report to specified path",
+)
+def report(results_file: str, detailed: bool, html: str):
     """Generate report from results file."""
     console.print(f"[blue]Loading results from {results_file}...[/blue]\n")
 
@@ -1070,6 +1263,18 @@ def report(results_file: str, detailed: bool):
     from evalview.core.types import EvaluationResult
 
     results = [EvaluationResult(**data) for data in results_data]
+
+    # Generate HTML report if requested
+    if html:
+        try:
+            from evalview.reporters.html_reporter import HTMLReporter
+            html_reporter = HTMLReporter()
+            html_path = html_reporter.generate(results, html)
+            console.print(f"[green]✅ HTML report saved to: {html_path}[/green]\n")
+        except ImportError as e:
+            console.print(f"[yellow]⚠️  Could not generate HTML report: {e}[/yellow]")
+            console.print("[dim]Install with: pip install jinja2 plotly[/dim]\n")
+        return
 
     reporter = ConsoleReporter()
 

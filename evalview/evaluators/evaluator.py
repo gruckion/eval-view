@@ -1,13 +1,14 @@
 """Main evaluator orchestrator."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 from evalview.core.types import (
     TestCase,
     ExecutionTrace,
     EvaluationResult,
     Evaluations,
 )
+from evalview.core.config import ScoringWeights, DEFAULT_WEIGHTS
 from evalview.evaluators.tool_call_evaluator import ToolCallEvaluator
 from evalview.evaluators.sequence_evaluator import SequenceEvaluator
 from evalview.evaluators.output_evaluator import OutputEvaluator
@@ -20,12 +21,17 @@ from evalview.evaluators.safety_evaluator import SafetyEvaluator
 class Evaluator:
     """Main evaluator that orchestrates all evaluation components."""
 
-    def __init__(self, openai_api_key: Optional[str] = None):
+    def __init__(
+        self,
+        openai_api_key: Optional[str] = None,
+        default_weights: Optional[ScoringWeights] = None,
+    ):
         """
         Initialize evaluator.
 
         Args:
             openai_api_key: OpenAI API key for LLM-as-judge, hallucination detection, and safety checks
+            default_weights: Default scoring weights (can be overridden per test case)
         """
         self.tool_evaluator = ToolCallEvaluator()
         self.sequence_evaluator = SequenceEvaluator()
@@ -34,6 +40,7 @@ class Evaluator:
         self.latency_evaluator = LatencyEvaluator()
         self.hallucination_evaluator = HallucinationEvaluator(openai_api_key)
         self.safety_evaluator = SafetyEvaluator(openai_api_key)
+        self.default_weights = default_weights or DEFAULT_WEIGHTS
 
     async def evaluate(
         self, test_case: TestCase, trace: ExecutionTrace, adapter_name: Optional[str] = None
@@ -78,20 +85,51 @@ class Evaluator:
             actual_output=trace.final_output,
         )
 
+    def _get_weights_for_test(self, test_case: TestCase) -> Dict[str, float]:
+        """
+        Get scoring weights for a test case.
+
+        Priority:
+        1. Per-test weights override (if specified)
+        2. Global default weights
+        """
+        # Start with default weights
+        weights = self.default_weights.to_dict()
+
+        # Apply per-test overrides if specified
+        if test_case.thresholds.weights:
+            override = test_case.thresholds.weights
+            if override.tool_accuracy is not None:
+                weights["tool_accuracy"] = override.tool_accuracy
+            if override.output_quality is not None:
+                weights["output_quality"] = override.output_quality
+            if override.sequence_correctness is not None:
+                weights["sequence_correctness"] = override.sequence_correctness
+
+            # Validate that weights still sum to 1.0
+            total = sum(weights.values())
+            if abs(total - 1.0) > 0.001:
+                raise ValueError(
+                    f"Scoring weights for test '{test_case.name}' must sum to 1.0, got {total:.3f}. "
+                    f"When overriding weights, ensure all three values are specified."
+                )
+
+        return weights
+
     def _compute_overall_score(self, evaluations: Evaluations, test_case: TestCase) -> float:
         """
         Compute weighted overall score.
 
-        Weights:
+        Weights are configurable via:
+        - Global config (scoring.weights in config.yaml)
+        - Per-test override (thresholds.weights in test case)
+
+        Default weights:
         - Tool accuracy: 30%
         - Output quality: 50%
         - Sequence correctness: 20%
         """
-        weights = {
-            "tool_accuracy": 0.3,
-            "output_quality": 0.5,
-            "sequence_correctness": 0.2,
-        }
+        weights = self._get_weights_for_test(test_case)
 
         score = (
             evaluations.tool_accuracy.accuracy * 100 * weights["tool_accuracy"]
