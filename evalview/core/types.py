@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 from typing import Any, Optional, List, Dict, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
 logger = logging.getLogger(__name__)
 
@@ -125,21 +125,23 @@ class StepMetrics(BaseModel):
     cost: float = 0.0  # in dollars (default to 0.0 for flexibility)
     tokens: Optional[TokenUsage] = None
 
-    @validator("latency", "cost", pre=True, always=True)
-    def coerce_to_float(cls, v, field):
+    @field_validator("latency", "cost", mode="before")
+    @classmethod
+    def coerce_to_float(cls, v, info: ValidationInfo):
         """Convert None or invalid values to 0.0 with DEBUG logging."""
         if v is None:
-            logger.debug(f"Coerced {field.name} from None to 0.0")
+            logger.debug(f"Coerced {info.field_name} from None to 0.0")
             return 0.0
         try:
             return float(v)
         except (TypeError, ValueError):
             raise ValueError(
-                f"Expected numeric value for {field.name}, got {type(v).__name__}: {v}. "
+                f"Expected numeric value for {info.field_name}, got {type(v).__name__}: {v}. "
                 f"Ensure your adapter returns numeric values for metrics."
             )
 
-    @validator("tokens", pre=True)
+    @field_validator("tokens", mode="before")
+    @classmethod
     def coerce_tokens(cls, v):
         """Convert int/dict to TokenUsage with DEBUG logging."""
         if v is None:
@@ -178,7 +180,8 @@ class ExecutionMetrics(BaseModel):
     total_latency: float
     total_tokens: Optional[TokenUsage] = None
 
-    @validator("total_tokens", pre=True)
+    @field_validator("total_tokens", mode="before")
+    @classmethod
     def coerce_total_tokens(cls, v):
         """Convert int/dict to TokenUsage with DEBUG logging."""
         if v is None:
@@ -209,18 +212,19 @@ class ExecutionTrace(BaseModel):
     final_output: str
     metrics: ExecutionMetrics
 
-    @validator("start_time", "end_time", pre=True)
-    def coerce_datetime(cls, v, field):
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def coerce_datetime(cls, v, info: ValidationInfo):
         """Convert ISO string to datetime with DEBUG logging."""
         if isinstance(v, str):
             try:
                 # Handle ISO format with optional timezone
                 result = datetime.fromisoformat(v.replace("Z", "+00:00"))
-                logger.debug(f"Coerced {field.name} from string to datetime")
+                logger.debug(f"Coerced {info.field_name} from string to datetime")
                 return result
             except ValueError:
                 raise ValueError(
-                    f"Invalid datetime format for {field.name}: {v}. "
+                    f"Invalid datetime format for {info.field_name}: {v}. "
                     f"Use ISO format (YYYY-MM-DDTHH:MM:SS) or datetime object."
                 )
         return v
