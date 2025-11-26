@@ -15,6 +15,7 @@ from evalview.core.types import (
     StepTrace,
     StepMetrics,
     ExecutionMetrics,
+    TokenUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,17 +70,26 @@ class CrewAIAdapter(AgentAdapter):
         payload = {"inputs": {"query": query, **context}}
 
         if self.verbose:
-            logger.info(f"🚀 Executing CrewAI request: {query}...")
-            logger.debug(f"📤 Payload: {json.dumps(payload, indent=2)}")
+            print(f"🚀 Executing CrewAI request: {query}...")
+            print(f"📤 Payload: {json.dumps(payload, indent=2)}")
+            print(f"📡 Endpoint: {self.endpoint}, Timeout: {self.timeout}s")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self.endpoint,
-                json=payload,
-                headers=self.headers,
-            )
-            response.raise_for_status()
-            data = response.json()
+        try:
+            print("Creating httpx client...") if self.verbose else None
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                print("Making POST request...") if self.verbose else None
+                response = await client.post(
+                    self.endpoint,
+                    json=payload,
+                    headers=self.headers,
+                )
+                print(f"Got response: {response.status_code}") if self.verbose else None
+                response.raise_for_status()
+                data = response.json()
+                print(f"Parsed JSON response") if self.verbose else None
+        except Exception as e:
+            print(f"HTTP ERROR: {e}") if self.verbose else None
+            raise
 
         if self.verbose:
             logger.debug(f"📥 Response: {json.dumps(data, indent=2)[:500]}...")
@@ -110,7 +120,7 @@ class CrewAIAdapter(AgentAdapter):
                 step = StepTrace(
                     step_id=task.get("id", f"task-{i}"),
                     step_name=task.get("description", f"Task {i + 1}"),
-                    tool_name=task.get("tool"),
+                    tool_name=task.get("tool") or "crew_task",
                     parameters=task.get("inputs", {}),
                     output=task.get("output", ""),
                     success=task.get("status") == "completed",
@@ -129,7 +139,7 @@ class CrewAIAdapter(AgentAdapter):
                 step = StepTrace(
                     step_id=f"exec-{i}",
                     step_name=execution.get("agent_name", f"Agent {i + 1}"),
-                    tool_name=execution.get("tool_used"),
+                    tool_name=execution.get("tool_used") or "agent_execution",
                     parameters={},
                     output=execution.get("output", ""),
                     success=True,
@@ -180,10 +190,16 @@ class CrewAIAdapter(AgentAdapter):
             total_tokens = sum(step.metrics.tokens or 0 for step in steps)
             total_tokens = total_tokens if total_tokens > 0 else None
 
+        # Convert integer total_tokens to TokenUsage object
+        token_usage = None
+        if total_tokens:
+            # CrewAI doesn't provide a breakdown, so put all tokens in output_tokens
+            token_usage = TokenUsage(output_tokens=total_tokens)
+
         return ExecutionMetrics(
             total_cost=total_cost,
             total_latency=total_latency,
-            total_tokens=total_tokens,
+            total_tokens=token_usage,
         )
 
     async def health_check(self) -> bool:

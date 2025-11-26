@@ -1,13 +1,6 @@
-# EvalView Configuration
-# Updated for LangGraph Cloud API (port 2024)
-adapter: langgraph
-endpoint: http://127.0.0.1:2024
-assistant_id: agent  # Your assistant/graph ID (check langgraph.json or use "agent")
-
-# Maximum time (seconds) to wait for agent response
-# If your backend refines multiple times, this prevents infinite waits
-# Recommended: 30-90s depending on complexity
+adapter: crewai
+endpoint: http://127.0.0.1:8000/crew
+assistant_id: agent
 timeout: 90.0
-
 headers:
   Content-Type: application/json
