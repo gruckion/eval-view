@@ -4,9 +4,14 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Callable, List, Optional, Set
+from typing import Callable, List, Optional, Set, Any, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
+
+# Type checking imports
+if TYPE_CHECKING:
+    from watchdog.observers import Observer as ObserverType
+    from watchdog.events import FileSystemEventHandler as FileSystemEventHandlerType
 
 try:
     from watchdog.observers import Observer
@@ -14,11 +19,15 @@ try:
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
-    Observer = None
-    FileSystemEventHandler = object
+    Observer = None  # type: ignore[misc, assignment]
+    FileSystemEventHandler = object  # type: ignore[misc, assignment]
 
 
-class DebouncedTestHandler(FileSystemEventHandler if WATCHDOG_AVAILABLE else object):
+# Use a base class that works with or without watchdog
+_BaseHandler = FileSystemEventHandler if WATCHDOG_AVAILABLE else object
+
+
+class DebouncedTestHandler(_BaseHandler):  # type: ignore[valid-type, misc]
     """Handler that debounces file changes and triggers test runs."""
 
     def __init__(
@@ -40,11 +49,11 @@ class DebouncedTestHandler(FileSystemEventHandler if WATCHDOG_AVAILABLE else obj
         self.debounce_seconds = debounce_seconds
         self.patterns = patterns or [".yaml", ".yml"]
         self._last_change: float = 0
-        self._pending_task: Optional[asyncio.Task] = None
+        self._pending_task: Optional[asyncio.Task[None]] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._changed_files: Set[str] = set()
 
-    def set_event_loop(self, loop: asyncio.AbstractEventLoop):
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Set the event loop for scheduling callbacks."""
         self._loop = loop
 
@@ -52,7 +61,7 @@ class DebouncedTestHandler(FileSystemEventHandler if WATCHDOG_AVAILABLE else obj
         """Check if this file should trigger a re-run."""
         return any(path.endswith(p) for p in self.patterns)
 
-    def _schedule_run(self, path: str):
+    def _schedule_run(self, path: str) -> None:
         """Schedule a debounced test run."""
         if not self._loop:
             return
@@ -65,7 +74,7 @@ class DebouncedTestHandler(FileSystemEventHandler if WATCHDOG_AVAILABLE else obj
             self._pending_task.cancel()
 
         # Schedule new task
-        async def debounced_callback():
+        async def debounced_callback() -> None:
             await asyncio.sleep(self.debounce_seconds)
 
             # Check if more changes came in during the wait
@@ -83,14 +92,14 @@ class DebouncedTestHandler(FileSystemEventHandler if WATCHDOG_AVAILABLE else obj
 
         self._pending_task = self._loop.create_task(debounced_callback())
 
-    def on_modified(self, event):
+    def on_modified(self, event: Any) -> None:
         """Handle file modification events."""
         if event.is_directory:
             return
         if self._should_handle(event.src_path):
             self._schedule_run(event.src_path)
 
-    def on_created(self, event):
+    def on_created(self, event: Any) -> None:
         """Handle file creation events."""
         if event.is_directory:
             return
@@ -123,11 +132,11 @@ class TestWatcher:
         self.paths = [Path(p) for p in paths]
         self.run_callback = run_callback
         self.debounce_seconds = debounce_seconds
-        self._observer: Optional[Observer] = None
+        self._observer: Any = None  # Type is Observer when watchdog is available
         self._handler: Optional[DebouncedTestHandler] = None
         self._running = False
 
-    async def start(self):
+    async def start(self) -> None:
         """Start watching for file changes."""
         if self._running:
             return
@@ -150,9 +159,9 @@ class TestWatcher:
         self._observer.start()
         self._running = True
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop watching for file changes."""
-        if self._observer:
+        if self._observer is not None:
             self._observer.stop()
             self._observer.join(timeout=2)
             self._observer = None
@@ -164,7 +173,7 @@ async def watch_and_run(
     run_callback: Callable[[], None],
     debounce_seconds: float = 2.0,
     on_start: Optional[Callable[[], None]] = None,
-):
+) -> None:
     """
     Watch test files and re-run on changes.
 

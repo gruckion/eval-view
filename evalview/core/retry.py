@@ -3,7 +3,7 @@
 import asyncio
 import random
 import logging
-from typing import Callable, TypeVar, Optional, Tuple, List
+from typing import Callable, TypeVar, Optional, Tuple, List, Any, Awaitable
 from dataclasses import dataclass, field
 
 import httpx
@@ -52,7 +52,7 @@ class RetryResult:
     """Result of a retry operation."""
 
     success: bool
-    result: Optional[T] = None
+    result: Any = None  # Use Any instead of T for dataclass compatibility
     exception: Optional[Exception] = None
     attempts: int = 0
     total_delay: float = 0.0
@@ -73,7 +73,7 @@ def is_retryable_exception(exc: Exception) -> bool:
 
 
 async def with_retry(
-    fn: Callable[[], T],
+    fn: Callable[[], Awaitable[T]],
     config: RetryConfig,
     on_retry: Optional[Callable[[int, float, Exception], None]] = None,
 ) -> RetryResult:
@@ -138,7 +138,7 @@ async def with_retry(
 class RetryableAdapter:
     """Wrapper that adds retry logic to an adapter."""
 
-    def __init__(self, adapter, config: RetryConfig):
+    def __init__(self, adapter: Any, config: RetryConfig):
         """
         Initialize retryable adapter wrapper.
 
@@ -148,15 +148,15 @@ class RetryableAdapter:
         """
         self.adapter = adapter
         self.config = config
-        self._retry_stats = {"total_retries": 0, "total_delay": 0.0}
+        self._retry_stats: dict[str, Any] = {"total_retries": 0, "total_delay": 0.0}
 
-    async def execute(self, query: str, **kwargs) -> any:
+    async def execute(self, query: str, **kwargs: Any) -> Any:
         """Execute with retry logic."""
 
-        async def _execute():
+        async def _execute() -> Any:
             return await self.adapter.execute(query, **kwargs)
 
-        def _on_retry(attempt: int, delay: float, exc: Exception):
+        def _on_retry(attempt: int, delay: float, exc: Exception) -> None:
             self._retry_stats["total_retries"] += 1
             self._retry_stats["total_delay"] += delay
 
@@ -165,13 +165,15 @@ class RetryableAdapter:
         if result.success:
             return result.result
         else:
-            raise result.exception
+            if result.exception is not None:
+                raise result.exception
+            raise RuntimeError("Retry failed without exception")
 
     async def health_check(self) -> bool:
         """Delegate health check to underlying adapter."""
         return await self.adapter.health_check()
 
     @property
-    def retry_stats(self) -> dict:
+    def retry_stats(self) -> dict[str, Any]:
         """Get retry statistics."""
         return self._retry_stats.copy()
