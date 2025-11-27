@@ -1,0 +1,27 @@
+# EvalView Configuration Example
+# Copy this file to config.yaml and customize for your agent:
+#   cp config.example.yaml config.yaml
+
+# Adapter type: http, langgraph, crewai, tapescope, openai-assistants
+adapter: http
+
+# Your agent's API endpoint
+endpoint: http://localhost:3000/api/agent
+
+# Optional: Assistant/Agent ID (for OpenAI Assistants, etc.)
+# assistant_id: asst_xxxxx
+
+# Request timeout in seconds
+timeout: 30.0
+
+# Optional: Custom headers
+headers:
+  Content-Type: application/json
+  # Authorization: Bearer your-token-here
+
+# Optional: Model configuration for cost tracking
+# model:
+#   name: gpt-4o-mini
+#   pricing:
+#     input_per_1m: 0.15
+#     output_per_1m: 0.60

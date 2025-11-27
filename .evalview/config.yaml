@@ -1,6 +1,0 @@
-adapter: crewai
-endpoint: http://127.0.0.1:8000/crew
-assistant_id: agent
-timeout: 90.0
-headers:
-  Content-Type: application/json
