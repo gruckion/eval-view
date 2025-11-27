@@ -117,7 +117,7 @@ We're building a hosted version:
 - 📈 **Regression detection** - Automatic alerts when performance degrades
 - ⚡ **Parallel runs** - Run hundreds of tests in seconds
 
-👉 **[Join the waitlist](https://tally.so/r/)** - be first to get access
+👉 **[Join the waitlist](https://form.typeform.com/to/EQO2uqSa)** - be first to get access
 
 ---
 
