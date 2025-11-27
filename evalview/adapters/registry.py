@@ -217,6 +217,14 @@ class AdapterRegistry:
         except ImportError:
             logger.warning("TapeScopeAdapter not available")
 
+        try:
+            from evalview.adapters.anthropic_adapter import AnthropicAdapter
+
+            cls.register("anthropic", AnthropicAdapter)
+            cls.register("claude", AnthropicAdapter)  # Alias
+        except ImportError:
+            logger.warning("AnthropicAdapter not available")
+
         cls._initialized = True
 
     @classmethod

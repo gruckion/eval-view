@@ -3,8 +3,16 @@
 [![CI](https://github.com/hidai25/EvalView/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/EvalView/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/hidai25/EvalView?style=social)](https://github.com/hidai25/EvalView/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/hidai25/EvalView?style=social)](https://github.com/hidai25/EvalView/network/members)
+
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+
+<!-- Uncomment when published to PyPI:
+[![PyPI version](https://img.shields.io/pypi/v/evalview.svg)](https://pypi.org/project/evalview/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/evalview.svg)](https://pypi.org/project/evalview/)
+-->
 
 **Playwright-style testing for AI agents.** Catch hallucinations, regressions, and cost spikes before they reach production.
 
