@@ -104,7 +104,9 @@ class HTTPAdapter(AgentAdapter):
         Override this method in subclasses for custom response formats.
         """
         session_id = data.get("session_id", f"session-{int(start_time.timestamp())}")
-        steps = self._parse_steps(data.get("steps", []))
+        # Support both "steps" and "tool_calls" field names
+        steps_data = data.get("steps") or data.get("tool_calls") or []
+        steps = self._parse_steps(steps_data)
 
         # Extract output from various common fields
         final_output = (
@@ -174,15 +176,37 @@ class HTTPAdapter(AgentAdapter):
         )
 
     def _parse_steps(self, steps_data: List[Dict[str, Any]]) -> List[StepTrace]:
-        """Parse steps from response data."""
+        """Parse steps from response data.
+
+        Supports multiple formats:
+        - Steps format: {"tool": "name", "parameters": {...}, "output": ...}
+        - Tool calls format: {"name": "tool_name", "arguments": {...}, "result": ...}
+        """
         steps = []
         for i, step_data in enumerate(steps_data):
+            # Support both "tool"/"tool_name" and "name" for tool name
+            tool_name = (
+                step_data.get("tool")
+                or step_data.get("tool_name")
+                or step_data.get("name")
+                or "unknown"
+            )
+            # Support both "parameters"/"params" and "arguments" for parameters
+            parameters = (
+                step_data.get("parameters")
+                or step_data.get("params")
+                or step_data.get("arguments")
+                or {}
+            )
+            # Support both "output" and "result" for output
+            output = step_data.get("output") or step_data.get("result")
+
             step = StepTrace(
                 step_id=step_data.get("id", f"step-{i}"),
-                step_name=step_data.get("name", f"Step {i + 1}"),
-                tool_name=step_data.get("tool", step_data.get("tool_name", "unknown")),
-                parameters=step_data.get("parameters", step_data.get("params", {})),
-                output=step_data.get("output", step_data.get("result")),
+                step_name=step_data.get("step_name", f"Step {i + 1}"),
+                tool_name=tool_name,
+                parameters=parameters,
+                output=output,
                 success=step_data.get("success", True),
                 error=step_data.get("error"),
                 metrics=StepMetrics(

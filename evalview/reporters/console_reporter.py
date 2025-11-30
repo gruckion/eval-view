@@ -211,6 +211,9 @@ class ConsoleReporter:
                     issues.append(f"  • Missing tools: {', '.join(tool_eval.missing)}")
                 if tool_eval.unexpected:
                     issues.append(f"  • Unexpected tools: {', '.join(tool_eval.unexpected)}")
+                # Show helpful hints for tool mismatches
+                for hint in tool_eval.hints:
+                    issues.append(f"  💡 {hint}")
 
                 # Sequence violations
                 seq_eval = result.evaluations.sequence_correctness
@@ -291,6 +294,9 @@ class ConsoleReporter:
             self.console.print(f"  ❌ Missing: {', '.join(tool_eval.missing)}")
         if tool_eval.unexpected:
             self.console.print(f"  ⚠️  Unexpected: {', '.join(tool_eval.unexpected)}")
+        # Show helpful hints
+        for hint in tool_eval.hints:
+            self.console.print(f"  [yellow]💡 {hint}[/yellow]")
 
         # Sequence correctness
         seq_eval = result.evaluations.sequence_correctness

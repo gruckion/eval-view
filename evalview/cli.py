@@ -179,30 +179,27 @@ model:
     else:
         console.print("\n[yellow]⚠️  .evalview/config.yaml already exists[/yellow]")
 
-    # Create example test case
+    # Create example test case (simple calculator that works with the demo agent)
     example_path = base_path / "tests" / "test-cases" / "example.yaml"
     if not example_path.exists():
-        example_content = """name: "Example Test Case"
-description: "Basic agent test"
+        example_content = """name: "Hello World - Calculator"
+description: "Simple test to verify EvalView is working"
 
 input:
-  query: "Analyze AAPL stock performance"
-  context: {}
+  query: "What is 2 plus 3?"
 
 expected:
   tools:
-    - fetch_stock_data
-    - analyze_metrics
+    - calculator
   output:
     contains:
-      - "revenue"
-      - "earnings"
+      - "5"
     not_contains:
       - "error"
 
 thresholds:
-  min_score: 80
-  max_cost: 0.50
+  min_score: 70
+  max_cost: 0.10
   max_latency: 5000
 """
         example_path.write_text(example_content)
@@ -210,13 +207,454 @@ thresholds:
     else:
         console.print("[yellow]⚠️  tests/test-cases/example.yaml already exists[/yellow]")
 
-    console.print("\n[blue]Next steps:[/blue]")
-    console.print("  1. Edit .evalview/config.yaml with your agent endpoint")
-    console.print("  2. Create tests:")
-    console.print("     • [cyan]evalview record[/cyan]     ← Record agent interactions as tests")
-    console.print("     • [cyan]evalview expand[/cyan]     ← Generate variations from a seed test")
-    console.print("     • Or write YAML files manually in tests/test-cases/")
-    console.print("  3. Run: [cyan]evalview run[/cyan]\n")
+    # Create demo agent directory and files
+    demo_agent_dir = base_path / "demo-agent"
+    if not demo_agent_dir.exists():
+        demo_agent_dir.mkdir(exist_ok=True)
+
+        # Create the demo agent
+        demo_agent_content = '''"""
+EvalView Demo Agent - A simple FastAPI agent for testing.
+
+Run with: python demo-agent/agent.py
+Then test with: evalview run
+"""
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+import uvicorn
+import time
+import re
+
+app = FastAPI(title="EvalView Demo Agent")
+
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+
+class ExecuteRequest(BaseModel):
+    # Support both formats:
+    # 1. EvalView HTTPAdapter format: {"query": "...", "context": {...}}
+    # 2. OpenAI-style format: {"messages": [...]}
+    query: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
+    messages: Optional[List[Message]] = None
+    enable_tracing: bool = True
+
+
+class ToolCall(BaseModel):
+    name: str
+    arguments: Dict[str, Any]
+    result: Any
+
+
+class ExecuteResponse(BaseModel):
+    output: str
+    tool_calls: List[ToolCall]
+    cost: float
+    latency: float
+
+
+def calculator(operation: str, a: float, b: float) -> float:
+    """Perform basic arithmetic operations."""
+    ops = {"add": a + b, "subtract": a - b, "multiply": a * b, "divide": a / b if b != 0 else 0}
+    return ops.get(operation, 0)
+
+
+def get_weather(city: str) -> Dict[str, Any]:
+    """Get weather for a city."""
+    weather = {
+        "new york": {"temp": 72, "condition": "sunny"},
+        "london": {"temp": 55, "condition": "rainy"},
+        "tokyo": {"temp": 68, "condition": "cloudy"},
+    }
+    return weather.get(city.lower(), {"error": f"City '{city}' not found"})
+
+
+def simple_agent(query: str) -> tuple:
+    """Simple rule-based agent logic."""
+    query_lower = query.lower()
+    tool_calls = []
+    cost = 0.001
+
+    # Calculator queries
+    if any(op in query_lower for op in ["plus", "add", "+", "sum"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("add", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "add", "a": a, "b": b}, result=result))
+            return f"The result of {a} + {b} = {result}", tool_calls, cost
+
+    elif any(op in query_lower for op in ["minus", "subtract", "-"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("subtract", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "subtract", "a": a, "b": b}, result=result))
+            return f"The result of {a} - {b} = {result}", tool_calls, cost
+
+    elif any(op in query_lower for op in ["times", "multiply", "*"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("multiply", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": a, "b": b}, result=result))
+            return f"The result of {a} * {b} = {result}", tool_calls, cost
+
+    # Weather queries
+    elif "weather" in query_lower:
+        for city in ["new york", "london", "tokyo"]:
+            if city in query_lower:
+                result = get_weather(city)
+                tool_calls.append(ToolCall(name="get_weather", arguments={"city": city}, result=result))
+                return f"Weather in {city.title()}: {result['temp']}°F, {result['condition']}", tool_calls, cost
+
+    return f"I received your query: {query}", tool_calls, cost
+
+
+@app.post("/execute", response_model=ExecuteResponse)
+async def execute(request: ExecuteRequest):
+    """Execute agent with given messages."""
+    start = time.time()
+
+    # Support both request formats
+    if request.query:
+        query = request.query
+    elif request.messages:
+        user_msgs = [m for m in request.messages if m.role == "user"]
+        if not user_msgs:
+            raise HTTPException(status_code=400, detail="No user message")
+        query = user_msgs[-1].content
+    else:
+        raise HTTPException(status_code=400, detail="Either query or messages must be provided")
+
+    output, tools, cost = simple_agent(query)
+    return ExecuteResponse(output=output, tool_calls=tools, cost=cost, latency=(time.time() - start) * 1000)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    print("🚀 Demo Agent running on http://localhost:8000")
+    print("📖 API docs: http://localhost:8000/docs")
+    print("\\n💡 Test with: evalview run")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+'''
+        (demo_agent_dir / "agent.py").write_text(demo_agent_content)
+
+        # Create requirements.txt for the demo agent
+        demo_requirements = """fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
+"""
+        (demo_agent_dir / "requirements.txt").write_text(demo_requirements)
+
+        console.print("[green]✅ Created demo-agent/ with working example agent[/green]")
+    else:
+        console.print("[yellow]⚠️  demo-agent/ already exists[/yellow]")
+
+    console.print("\n[blue]━━━ Quick Start (2 minutes) ━━━[/blue]")
+    console.print("\n[bold]1. Start the demo agent:[/bold]")
+    console.print("   [cyan]pip install fastapi uvicorn[/cyan]")
+    console.print("   [cyan]python demo-agent/agent.py[/cyan]")
+    console.print("\n[bold]2. In another terminal, run tests:[/bold]")
+    console.print("   [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]")
+    console.print("   [cyan]evalview run[/cyan]")
+    console.print("\n[dim]The demo agent runs on http://localhost:8000[/dim]")
+    console.print("[dim]Edit tests/test-cases/example.yaml to add more tests[/dim]\n")
+
+
+@main.command()
+def quickstart():
+    """🚀 Quick start: Set up and run a demo in under 2 minutes."""
+    import subprocess
+    import signal
+    import atexit
+
+    console.print("[blue]━━━ EvalView Quickstart ━━━[/blue]\n")
+    console.print("This will set up a working demo in under 2 minutes.\n")
+
+    base_path = Path(".")
+
+    # Step 1: Create demo agent if it doesn't exist
+    demo_agent_dir = base_path / "demo-agent"
+    if not demo_agent_dir.exists():
+        console.print("[bold]Step 1/4:[/bold] Creating demo agent...")
+        _create_demo_agent(base_path)
+        console.print("[green]✅ Demo agent created[/green]\n")
+    else:
+        console.print("[bold]Step 1/4:[/bold] Demo agent already exists\n")
+
+    # Step 2: Create test case if it doesn't exist
+    test_dir = base_path / "tests" / "test-cases"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    test_file = test_dir / "quickstart.yaml"
+    if not test_file.exists():
+        console.print("[bold]Step 2/4:[/bold] Creating test case...")
+        test_content = """name: "Quickstart Test"
+description: "Simple calculator test for quickstart demo"
+
+input:
+  query: "What is 5 plus 7?"
+
+expected:
+  tools:
+    - calculator
+  output:
+    contains:
+      - "12"
+
+thresholds:
+  min_score: 70
+  max_cost: 0.10
+  max_latency: 5000
+"""
+        test_file.write_text(test_content)
+        console.print("[green]✅ Test case created[/green]\n")
+    else:
+        console.print("[bold]Step 2/4:[/bold] Test case already exists\n")
+
+    # Step 3: Create config for demo agent
+    config_dir = base_path / ".evalview"
+    config_dir.mkdir(exist_ok=True)
+    config_file = config_dir / "config.yaml"
+    if not config_file.exists():
+        console.print("[bold]Step 3/4:[/bold] Creating config...")
+        config_content = """# EvalView Quickstart Config
+adapter: http
+endpoint: http://localhost:8000/execute
+timeout: 30.0
+headers: {}
+allow_private_urls: true  # Allow localhost for demo agent
+
+model:
+  name: gpt-4o-mini
+"""
+        config_file.write_text(config_content)
+        console.print("[green]✅ Config created[/green]\n")
+    else:
+        console.print("[bold]Step 3/4:[/bold] Config already exists\n")
+
+    # Check for OPENAI_API_KEY
+    if not os.getenv("OPENAI_API_KEY"):
+        console.print("[yellow]⚠️  OPENAI_API_KEY not set[/yellow]")
+        console.print("\nTo complete the quickstart, set your OpenAI API key:")
+        console.print("  [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]\n")
+        console.print("Then run this command again.\n")
+        return
+
+    # Step 4: Start demo agent and run test
+    console.print("[bold]Step 4/4:[/bold] Starting demo agent and running test...\n")
+
+    # Check if dependencies are installed
+    try:
+        import fastapi  # noqa: F401
+        import uvicorn  # noqa: F401
+    except ImportError:
+        console.print("[yellow]Installing demo agent dependencies...[/yellow]")
+        subprocess.run([sys.executable, "-m", "pip", "install", "fastapi", "uvicorn"],
+                      capture_output=True, check=True)
+        console.print("[green]✅ Dependencies installed[/green]\n")
+
+    # Start the demo agent in background
+    console.print("[dim]Starting demo agent on http://localhost:8000...[/dim]")
+    agent_process = subprocess.Popen(
+        [sys.executable, str(demo_agent_dir / "agent.py")],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Register cleanup
+    def cleanup():
+        agent_process.terminate()
+        try:
+            agent_process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            agent_process.kill()
+
+    atexit.register(cleanup)
+
+    # Wait for agent to start
+    import time
+    console.print("[dim]Waiting for agent to be ready...[/dim]")
+    for _ in range(10):
+        time.sleep(0.5)
+        try:
+            import urllib.request
+            urllib.request.urlopen("http://localhost:8000/health", timeout=1)
+            break
+        except Exception:
+            continue
+    else:
+        console.print("[red]❌ Demo agent failed to start[/red]")
+        cleanup()
+        return
+
+    console.print("[green]✅ Demo agent running[/green]\n")
+
+    # Run the test
+    console.print("[bold]Running test...[/bold]\n")
+    try:
+        # Import and run the test programmatically
+        from evalview.core.loader import TestCaseLoader
+        from evalview.adapters.http_adapter import HTTPAdapter
+        from evalview.evaluators.evaluator import Evaluator
+        from evalview.reporters.console_reporter import ConsoleReporter
+
+        test_cases = [TestCaseLoader.load_from_file(test_file)]
+        adapter = HTTPAdapter(
+            endpoint="http://localhost:8000/execute",
+            headers={},
+            timeout=30.0,
+            allow_private_urls=True,  # Allow localhost for demo
+        )
+        evaluator = Evaluator(openai_api_key=os.getenv("OPENAI_API_KEY"))
+        reporter = ConsoleReporter()
+
+        async def run_test():
+            test_case = test_cases[0]
+            trace = await adapter.execute(test_case.input.query, test_case.input.context)
+            result = await evaluator.evaluate(test_case, trace)
+            return result
+
+        result = asyncio.run(run_test())
+        reporter.print_detailed(result)
+
+        console.print("\n[green bold]🎉 Quickstart complete![/green bold]")
+        console.print("\n[bold]Next steps:[/bold]")
+        console.print("  • Edit tests/test-cases/quickstart.yaml to add more tests")
+        console.print("  • Run [cyan]evalview run[/cyan] to run all tests")
+        console.print("  • Replace the demo agent with your own agent\n")
+
+    except Exception as e:
+        console.print(f"[red]❌ Test failed: {e}[/red]")
+    finally:
+        cleanup()
+
+
+def _create_demo_agent(base_path: Path):
+    """Create the demo agent files."""
+    demo_agent_dir = base_path / "demo-agent"
+    demo_agent_dir.mkdir(exist_ok=True)
+
+    demo_agent_content = '''"""
+EvalView Demo Agent - A simple FastAPI agent for testing.
+"""
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+import uvicorn
+import time
+import re
+
+app = FastAPI(title="EvalView Demo Agent")
+
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+
+class ExecuteRequest(BaseModel):
+    # Support both formats:
+    # 1. EvalView HTTPAdapter format: {"query": "...", "context": {...}}
+    # 2. OpenAI-style format: {"messages": [...]}
+    query: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
+    messages: Optional[List[Message]] = None
+    enable_tracing: bool = True
+
+
+class ToolCall(BaseModel):
+    name: str
+    arguments: Dict[str, Any]
+    result: Any
+
+
+class ExecuteResponse(BaseModel):
+    output: str
+    tool_calls: List[ToolCall]
+    cost: float
+    latency: float
+
+
+def calculator(operation: str, a: float, b: float) -> float:
+    ops = {"add": a + b, "subtract": a - b, "multiply": a * b, "divide": a / b if b != 0 else 0}
+    return ops.get(operation, 0)
+
+
+def simple_agent(query: str) -> tuple:
+    query_lower = query.lower()
+    tool_calls = []
+    cost = 0.001
+
+    if any(op in query_lower for op in ["plus", "add", "+", "sum"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("add", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "add", "a": a, "b": b}, result=result))
+            return f"The result of {a} + {b} = {result}", tool_calls, cost
+
+    elif any(op in query_lower for op in ["minus", "subtract", "-"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("subtract", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "subtract", "a": a, "b": b}, result=result))
+            return f"The result of {a} - {b} = {result}", tool_calls, cost
+
+    elif any(op in query_lower for op in ["times", "multiply", "*"]):
+        numbers = re.findall(r"\\d+", query)
+        if len(numbers) >= 2:
+            a, b = float(numbers[0]), float(numbers[1])
+            result = calculator("multiply", a, b)
+            tool_calls.append(ToolCall(name="calculator", arguments={"operation": "multiply", "a": a, "b": b}, result=result))
+            return f"The result of {a} * {b} = {result}", tool_calls, cost
+
+    return f"I received your query: {query}", tool_calls, cost
+
+
+@app.post("/execute", response_model=ExecuteResponse)
+async def execute(request: ExecuteRequest):
+    start = time.time()
+
+    # Support both request formats
+    if request.query:
+        query = request.query
+    elif request.messages:
+        user_msgs = [m for m in request.messages if m.role == "user"]
+        if not user_msgs:
+            raise HTTPException(status_code=400, detail="No user message")
+        query = user_msgs[-1].content
+    else:
+        raise HTTPException(status_code=400, detail="Either query or messages must be provided")
+
+    output, tools, cost = simple_agent(query)
+    return ExecuteResponse(output=output, tool_calls=tools, cost=cost, latency=(time.time() - start) * 1000)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    print("Demo Agent running on http://localhost:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+'''
+    (demo_agent_dir / "agent.py").write_text(demo_agent_content)
+
+    requirements = "fastapi>=0.100.0\nuvicorn>=0.23.0\npydantic>=2.0.0\n"
+    (demo_agent_dir / "requirements.txt").write_text(requirements)
 
 
 async def _init_wizard_async(dir: str):
@@ -736,6 +1174,18 @@ async def _run_async(
             allow_private_urls=allow_private_urls,
         )
 
+    # Validate OPENAI_API_KEY is set (required for LLM-as-judge evaluation)
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        console.print("\n[red bold]❌ Error: OPENAI_API_KEY is required for evaluation[/red bold]\n")
+        console.print("EvalView uses LLM-as-judge to evaluate agent output quality.")
+        console.print("Please set your OpenAI API key:\n")
+        console.print("  [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]")
+        console.print("\nOr add it to your .env file:")
+        console.print("  [cyan]echo 'OPENAI_API_KEY=your-key-here' >> .env[/cyan]\n")
+        console.print("[dim]Get your API key at: https://platform.openai.com/api-keys[/dim]")
+        return
+
     # Initialize evaluator with configurable weights
     scoring_weights = None
     if "scoring" in config and "weights" in config["scoring"]:
@@ -747,7 +1197,7 @@ async def _run_async(
             console.print(f"[yellow]⚠️  Invalid scoring weights in config: {e}. Using defaults.[/yellow]")
 
     evaluator = Evaluator(
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        openai_api_key=openai_api_key,
         default_weights=scoring_weights,
     )
 

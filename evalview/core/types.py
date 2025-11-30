@@ -256,6 +256,7 @@ class ToolEvaluation(BaseModel):
     missing: List[str] = Field(default_factory=list)
     unexpected: List[str] = Field(default_factory=list)
     correct: List[str] = Field(default_factory=list)
+    hints: List[str] = Field(default_factory=list, description="Helpful hints for fixing mismatches")
 
 
 class SequenceEvaluation(BaseModel):
