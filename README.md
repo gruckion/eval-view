@@ -245,7 +245,7 @@ We're building a hosted version:
 - ✅ **YAML-based test cases** - Write readable, maintainable test definitions
 - ⚡ **Parallel execution** - Run tests concurrently (8x faster by default)
 - 📊 **Multiple evaluation metrics** - Tool accuracy, sequence correctness, output quality, cost, and latency
-- 🤖 **LLM-as-judge** - Automated output quality assessment using GPT-4
+- 🤖 **LLM-as-judge** - Automated output quality assessment
 - 💰 **Cost tracking** - Automatic cost calculation based on token usage
 - 🔌 **Universal adapters** - Works with any HTTP or streaming API
 - 🎨 **Rich console output** - Beautiful, informative test results
@@ -327,7 +327,7 @@ evalview report .evalview/results/20241118_004830.json --detailed --html report.
 | Metric | Weight | Description |
 |--------|--------|-------------|
 | **Tool Accuracy** | 30% | Checks if expected tools were called |
-| **Output Quality** | 50% | LLM-as-judge evaluation (GPT-4) |
+| **Output Quality** | 50% | LLM-as-judge evaluation |
 | **Sequence Correctness** | 20% | Validates exact tool call order |
 | **Cost Threshold** | Pass/Fail | Must stay under `max_cost` |
 | **Latency Threshold** | Pass/Fail | Must complete under `max_latency` |
@@ -418,4 +418,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Built for teams shipping AI agents to production** 🚀
+**Ship AI agents with confidence** 🚀
