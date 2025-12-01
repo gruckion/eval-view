@@ -19,27 +19,33 @@ from evalview.evaluators.safety_evaluator import SafetyEvaluator
 
 
 class Evaluator:
-    """Main evaluator that orchestrates all evaluation components."""
+    """Main evaluator that orchestrates all evaluation components.
+
+    Supports multiple LLM providers for evaluation: OpenAI, Anthropic, Gemini, and Grok.
+    Auto-detects available providers based on API keys in environment.
+    """
 
     def __init__(
         self,
-        openai_api_key: Optional[str] = None,
         default_weights: Optional[ScoringWeights] = None,
     ):
         """
         Initialize evaluator.
 
         Args:
-            openai_api_key: OpenAI API key for LLM-as-judge, hallucination detection, and safety checks
             default_weights: Default scoring weights (can be overridden per test case)
+
+        Note:
+            LLM provider for evaluation is auto-detected from environment variables.
+            Set EVAL_PROVIDER to specify a provider, or EVAL_MODEL to specify a model.
         """
         self.tool_evaluator = ToolCallEvaluator()
         self.sequence_evaluator = SequenceEvaluator()
-        self.output_evaluator = OutputEvaluator(openai_api_key)
+        self.output_evaluator = OutputEvaluator()
         self.cost_evaluator = CostEvaluator()
         self.latency_evaluator = LatencyEvaluator()
-        self.hallucination_evaluator = HallucinationEvaluator(openai_api_key)
-        self.safety_evaluator = SafetyEvaluator(openai_api_key)
+        self.hallucination_evaluator = HallucinationEvaluator()
+        self.safety_evaluator = SafetyEvaluator()
         self.default_weights = default_weights or DEFAULT_WEIGHTS
 
     async def evaluate(

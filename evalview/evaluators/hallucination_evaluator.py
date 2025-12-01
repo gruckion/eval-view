@@ -1,8 +1,9 @@
-"""Hallucination detection evaluator."""
+"""Hallucination detection evaluator.
 
-import os
+Supports multiple LLM providers: OpenAI, Anthropic, Gemini, and Grok.
+"""
+
 from typing import Optional, Tuple, List
-from openai import AsyncOpenAI
 
 from evalview.core.types import (
     TestCase,
@@ -10,19 +11,30 @@ from evalview.core.types import (
     HallucinationEvaluation,
     HallucinationCheck,
 )
+from evalview.core.llm_provider import LLMClient, LLMProvider
 
 
 class HallucinationEvaluator:
-    """Evaluator for detecting factual hallucinations in agent outputs."""
+    """Evaluator for detecting factual hallucinations in agent outputs.
 
-    def __init__(self, openai_api_key: Optional[str] = None):
+    Supports multiple LLM providers for fact-checking.
+    """
+
+    def __init__(
+        self,
+        provider: Optional[LLMProvider] = None,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+    ):
         """
         Initialize hallucination evaluator.
 
         Args:
-            openai_api_key: OpenAI API key for LLM-based fact checking
+            provider: LLM provider to use (auto-detected if not specified)
+            api_key: API key (uses env var if not specified)
+            model: Model to use (uses provider default if not specified)
         """
-        self.client = AsyncOpenAI(api_key=openai_api_key or os.getenv("OPENAI_API_KEY"))
+        self.llm_client = LLMClient(provider=provider, api_key=api_key, model=model)
 
     async def evaluate(self, test_case: TestCase, trace: ExecutionTrace) -> HallucinationEvaluation:
         """
@@ -201,23 +213,12 @@ Respond in JSON format:
 Be strict: Even minor embellishments or unjustified claims should be flagged."""
 
         try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a strict fact-checking system. Respond only with valid JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
+            result = await self.llm_client.chat_completion(
+                system_prompt="You are a strict fact-checking system. Respond only with valid JSON.",
+                user_prompt=prompt,
                 temperature=0.0,
-                response_format={"type": "json_object"},
+                max_tokens=1000,
             )
-
-            result_text = response.choices[0].message.content
-            import json
-
-            result = json.loads(result_text)
             return result
 
         except Exception as e:

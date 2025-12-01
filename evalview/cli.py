@@ -16,6 +16,15 @@ from dotenv import load_dotenv
 
 from evalview.core.loader import TestCaseLoader
 from evalview.core.pricing import get_model_pricing_info
+from evalview.core.llm_provider import (
+    detect_available_providers,
+    get_missing_provider_message,
+    get_provider_status,
+    get_or_select_provider,
+    save_provider_preference,
+    PROVIDER_CONFIGS,
+    LLMProvider,
+)
 from evalview.adapters.http_adapter import HTTPAdapter
 from evalview.adapters.tapescope_adapter import TapeScopeAdapter
 from evalview.adapters.langgraph_adapter import LangGraphAdapter
@@ -364,8 +373,9 @@ pydantic>=2.0.0
     console.print("\n[bold]1. Start the demo agent:[/bold]")
     console.print("   [cyan]pip install fastapi uvicorn[/cyan]")
     console.print("   [cyan]python demo-agent/agent.py[/cyan]")
-    console.print("\n[bold]2. In another terminal, run tests:[/bold]")
-    console.print("   [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]")
+    console.print("\n[bold]2. In another terminal, set an API key (any one):[/bold]")
+    console.print("   [cyan]export ANTHROPIC_API_KEY='your-key'[/cyan]  [dim]# or OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY[/dim]")
+    console.print("\n[bold]3. Run tests:[/bold]")
     console.print("   [cyan]evalview run[/cyan]")
     console.print("\n[dim]The demo agent runs on http://localhost:8000[/dim]")
     console.print("[dim]Edit tests/test-cases/example.yaml to add more tests[/dim]\n")
@@ -494,11 +504,13 @@ model:
     else:
         console.print("[bold]Step 3/4:[/bold] Config already exists\n")
 
-    # Check for OPENAI_API_KEY
-    if not os.getenv("OPENAI_API_KEY"):
-        console.print("[yellow]⚠️  OPENAI_API_KEY not set[/yellow]")
-        console.print("\nTo complete the quickstart, set your OpenAI API key:")
-        console.print("  [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]\n")
+    # Check for any LLM provider API key
+    available_providers = detect_available_providers()
+    if not available_providers:
+        console.print("[yellow]⚠️  No LLM provider API key set[/yellow]")
+        console.print("\nTo complete the quickstart, set at least one API key:")
+        console.print("  [cyan]export ANTHROPIC_API_KEY='your-key'[/cyan]  [dim]# recommended[/dim]")
+        console.print("  [dim]# or: OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY[/dim]\n")
         console.print("Then run this command again.\n")
         return
 
@@ -1173,17 +1185,20 @@ async def _run_async(
     from evalview.core.retry import RetryConfig, with_retry
     from evalview.core.config import ScoringWeights
 
-    # Validate OPENAI_API_KEY upfront (required for LLM-as-judge evaluation)
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        console.print("\n[red bold]❌ Error: OPENAI_API_KEY is required[/red bold]\n")
-        console.print("EvalView uses LLM-as-judge to evaluate output quality.")
-        console.print("Please set your OpenAI API key:\n")
-        console.print("  [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]")
-        console.print("\nOr add it to your .env file:")
-        console.print("  [cyan]echo 'OPENAI_API_KEY=your-key-here' >> .env[/cyan]\n")
-        console.print("[dim]Get your API key at: https://platform.openai.com/api-keys[/dim]")
+    # Interactive provider selection for LLM-as-judge
+    result = get_or_select_provider(console)
+    if result is None:
         return
+
+    selected_provider, selected_api_key = result
+
+    # Save preference for future runs
+    save_provider_preference(selected_provider)
+
+    # Set environment variable for the evaluators to use
+    config_for_provider = PROVIDER_CONFIGS[selected_provider]
+    os.environ["EVAL_PROVIDER"] = selected_provider.value
+    os.environ[config_for_provider.env_var] = selected_api_key
 
     if debug:
         console.print("[dim]🐛 Debug mode enabled - will show raw responses[/dim]\n")
@@ -1229,14 +1244,17 @@ async def _run_async(
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    # Extract model config
+    # Extract model config (can be string or dict)
     model_config = config.get("model", {})
     if verbose and model_config:
-        console.print(f"[dim]💰 Model: {model_config.get('name', 'gpt-5-mini')}[/dim]")
-        if "pricing" in model_config:
-            console.print(
-                f"[dim]💵 Custom pricing: ${model_config['pricing']['input_per_1m']:.2f} in, ${model_config['pricing']['output_per_1m']:.2f} out[/dim]"
-            )
+        if isinstance(model_config, str):
+            console.print(f"[dim]💰 Model: {model_config}[/dim]")
+        elif isinstance(model_config, dict):
+            console.print(f"[dim]💰 Model: {model_config.get('name', 'gpt-5-mini')}[/dim]")
+            if "pricing" in model_config:
+                console.print(
+                    f"[dim]💵 Custom pricing: ${model_config['pricing']['input_per_1m']:.2f} in, ${model_config['pricing']['output_per_1m']:.2f} out[/dim]"
+                )
 
     # SSRF protection config - defaults to True for local development
     # Set to False in production when using untrusted test cases
@@ -1288,6 +1306,17 @@ async def _run_async(
             model_config=model_config,
             allow_private_urls=allow_private_urls,
         )
+    elif adapter_type == "anthropic":
+        # Anthropic Claude adapter for direct API testing
+        from evalview.adapters.anthropic_adapter import AnthropicAdapter
+        adapter = AnthropicAdapter(
+            model=config.get("model", "claude-sonnet-4-5-20250929"),
+            tools=config.get("tools", []),
+            system_prompt=config.get("system_prompt"),
+            max_tokens=config.get("max_tokens", 4096),
+            timeout=config.get("timeout", 120.0),
+            verbose=verbose,
+        )
     else:
         # HTTP adapter for standard REST APIs
         adapter = HTTPAdapter(
@@ -1298,19 +1327,8 @@ async def _run_async(
             allow_private_urls=allow_private_urls,
         )
 
-    # Validate OPENAI_API_KEY is set (required for LLM-as-judge evaluation)
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        console.print("\n[red bold]❌ Error: OPENAI_API_KEY is required for evaluation[/red bold]\n")
-        console.print("EvalView uses LLM-as-judge to evaluate agent output quality.")
-        console.print("Please set your OpenAI API key:\n")
-        console.print("  [cyan]export OPENAI_API_KEY='your-key-here'[/cyan]")
-        console.print("\nOr add it to your .env file:")
-        console.print("  [cyan]echo 'OPENAI_API_KEY=your-key-here' >> .env[/cyan]\n")
-        console.print("[dim]Get your API key at: https://platform.openai.com/api-keys[/dim]")
-        return
-
     # Initialize evaluator with configurable weights
+    # (LLM provider is auto-detected by the OutputEvaluator)
     scoring_weights = None
     if "scoring" in config and "weights" in config["scoring"]:
         try:
@@ -1321,7 +1339,6 @@ async def _run_async(
             console.print(f"[yellow]⚠️  Invalid scoring weights in config: {e}. Using defaults.[/yellow]")
 
     evaluator = Evaluator(
-        openai_api_key=openai_api_key,
         default_weights=scoring_weights,
     )
 
