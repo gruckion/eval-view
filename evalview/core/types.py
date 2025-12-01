@@ -113,6 +113,10 @@ class TestCase(BaseModel):
     endpoint: Optional[str] = None  # e.g., "http://127.0.0.1:2024"
     adapter_config: Optional[Dict[str, Any]] = None  # Additional adapter settings
 
+    # Optional: Tool definitions for adapters that support them (e.g., Anthropic, OpenAI)
+    # Each tool should have: name, description, input_schema
+    tools: Optional[List[Dict[str, Any]]] = None
+
 
 # ============================================================================
 # Execution Trace Types

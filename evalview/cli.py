@@ -1064,6 +1064,7 @@ thresholds:
 
 
 @main.command()
+@click.argument("path", required=False, default=None)
 @click.option(
     "--pattern",
     default="*.yaml",
@@ -1139,6 +1140,7 @@ thresholds:
     help="Generate HTML report to specified path",
 )
 def run(
+    path: Optional[str],
     pattern: str,
     test: tuple,
     filter: str,
@@ -1154,14 +1156,19 @@ def run(
     watch: bool,
     html_report: str,
 ):
-    """Run test cases against the agent."""
+    """Run test cases against the agent.
+
+    PATH can be a directory containing test cases (e.g., examples/anthropic)
+    or a specific test file (e.g., examples/anthropic/test-case.yaml).
+    """
     asyncio.run(_run_async(
-        pattern, test, filter, output, verbose, track, compare_baseline, debug,
+        path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
         sequential, max_workers, max_retries, retry_delay, watch, html_report
     ))
 
 
 async def _run_async(
+    path: Optional[str],
     pattern: str,
     test: tuple,
     filter: str,
@@ -1184,6 +1191,13 @@ async def _run_async(
     from evalview.core.parallel import execute_tests_parallel
     from evalview.core.retry import RetryConfig, with_retry
     from evalview.core.config import ScoringWeights
+
+    # Load environment variables from path directory if provided
+    if path:
+        target_dir = Path(path) if Path(path).is_dir() else Path(path).parent
+        path_env = target_dir / ".env.local"
+        if path_env.exists():
+            load_dotenv(dotenv_path=str(path_env), override=True)
 
     # Interactive provider selection for LLM-as-judge
     result = get_or_select_provider(console)
@@ -1235,10 +1249,25 @@ async def _run_async(
 
     console.print("[blue]Running test cases...[/blue]\n")
 
-    # Load config
-    config_path = Path(".evalview/config.yaml")
+    # Load config - check path directory first, then current directory
+    config_path = None
+    if path:
+        # Check for config in the provided path directory
+        target_dir = Path(path) if Path(path).is_dir() else Path(path).parent
+        path_config = target_dir / ".evalview" / "config.yaml"
+        if path_config.exists():
+            config_path = path_config
+            if verbose:
+                console.print(f"[dim]📂 Using config from: {path_config}[/dim]")
+
+    # Fall back to current directory config
+    if config_path is None:
+        config_path = Path(".evalview/config.yaml")
+
     if not config_path.exists():
         console.print("[red]❌ Config file not found. Run 'evalview init' first.[/red]")
+        if path:
+            console.print(f"[dim]Looked in: {Path(path) / '.evalview/config.yaml'} and .evalview/config.yaml[/dim]")
         return
 
     with open(config_path) as f:
@@ -1357,9 +1386,30 @@ async def _run_async(
         tracker = RegressionTracker()
 
     # Load test cases
+    # Priority: 1. path argument, 2. pattern option, 3. default tests/test-cases/
+
+    # Check if path argument is provided (e.g., evalview run examples/anthropic)
+    if path:
+        target_path = Path(path)
+        if target_path.exists() and target_path.is_file():
+            # Load single file directly
+            try:
+                test_cases = [TestCaseLoader.load_from_file(target_path)]
+                if verbose:
+                    console.print(f"[dim]📄 Loading test case from: {path}[/dim]\n")
+            except Exception as e:
+                console.print(f"[red]❌ Failed to load test case: {e}[/red]")
+                return
+        elif target_path.exists() and target_path.is_dir():
+            # Load all YAML files from specified directory
+            test_cases = TestCaseLoader.load_from_directory(target_path, "*.yaml")
+            if verbose:
+                console.print(f"[dim]📁 Loading test cases from: {path}[/dim]\n")
+        else:
+            console.print(f"[red]❌ Path not found: {path}[/red]")
+            return
     # Check if pattern is a direct file path
-    pattern_path = Path(pattern)
-    if pattern_path.exists() and pattern_path.is_file():
+    elif (pattern_path := Path(pattern)).exists() and pattern_path.is_file():
         # Load single file directly
         try:
             test_cases = [TestCaseLoader.load_from_file(pattern_path)]
@@ -1378,8 +1428,9 @@ async def _run_async(
         test_cases_dir = Path("tests/test-cases")
         if not test_cases_dir.exists():
             console.print("[red]❌ Test cases directory not found: tests/test-cases[/red]")
-            console.print("[dim]Tip: You can also specify a file path directly:[/dim]")
-            console.print("[dim]  evalview run --pattern path/to/test-case.yaml[/dim]")
+            console.print("[dim]Tip: You can specify a path or file directly:[/dim]")
+            console.print("[dim]  evalview run examples/anthropic[/dim]")
+            console.print("[dim]  evalview run path/to/test-case.yaml[/dim]")
             return
         test_cases = TestCaseLoader.load_from_directory(test_cases_dir, pattern)
 
@@ -1610,8 +1661,13 @@ async def _run_async(
         """Execute a single test case with optional retry logic."""
         test_adapter = get_adapter_for_test(test_case)
 
+        # Merge test case tools into context for adapters that support them
+        context = dict(test_case.input.context) if test_case.input.context else {}
+        if hasattr(test_case, 'tools') and test_case.tools:
+            context['tools'] = test_case.tools
+
         async def _execute():
-            return await test_adapter.execute(test_case.input.query, test_case.input.context)
+            return await test_adapter.execute(test_case.input.query, context)
 
         # Execute with retry if configured
         if retry_config.max_retries > 0:
