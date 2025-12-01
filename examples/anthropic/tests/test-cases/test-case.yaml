@@ -13,7 +13,7 @@ input:
   context:
     system_prompt: "You are a helpful assistant with access to weather and calculation tools."
 
-# Define tools for the test
+# Define tools for the test (with mock responses for testing)
 tools:
   - name: get_weather
     description: Get current weather for a city
@@ -25,6 +25,10 @@ tools:
           description: The city name
       required:
         - city
+    mock_response:
+      temperature: 22
+      condition: "partly cloudy"
+      humidity: 65
 
   - name: convert_temperature
     description: Convert temperature between Celsius and Fahrenheit
@@ -44,6 +48,9 @@ tools:
         - value
         - from_unit
         - to_unit
+    mock_response:
+      converted_value: 77
+      unit: "fahrenheit"
 
 expected:
   tools:

@@ -121,6 +121,16 @@ class AnthropicAdapter(AgentAdapter):
         tool_executor = context.get("tool_executor", self.tool_executor)
         system_prompt = context.get("system_prompt", self.system_prompt)
 
+        # Keep original tools with mock_response for internal lookups
+        tools_with_mocks = tools
+
+        # Strip mock_response from tools before sending to Anthropic API
+        # (Anthropic API doesn't allow extra fields)
+        api_tools = []
+        for tool in tools:
+            clean_tool = {k: v for k, v in tool.items() if k != "mock_response"}
+            api_tools.append(clean_tool)
+
         start_time = datetime.now()
         steps: List[StepTrace] = []
         total_input_tokens = 0
@@ -128,7 +138,7 @@ class AnthropicAdapter(AgentAdapter):
 
         if self.verbose:
             logger.info(f"🚀 Executing Anthropic Claude: {query[:50]}...")
-            logger.debug(f"Model: {model}, Tools: {len(tools)}")
+            logger.debug(f"Model: {model}, Tools: {len(api_tools)}")
 
         client = AsyncAnthropic()
 
@@ -152,15 +162,31 @@ class AnthropicAdapter(AgentAdapter):
             if system_prompt:
                 kwargs["system"] = system_prompt
 
-            if tools:
-                kwargs["tools"] = tools
+            if api_tools:
+                kwargs["tools"] = api_tools
 
+            # Track API call timing
+            api_call_start = datetime.now()
             response = await client.messages.create(**kwargs)
+            api_call_end = datetime.now()
+            api_call_latency = (api_call_end - api_call_start).total_seconds() * 1000
 
-            # Track token usage
+            # Track token usage for this round
+            round_input_tokens = 0
+            round_output_tokens = 0
             if hasattr(response, "usage"):
-                total_input_tokens += response.usage.input_tokens
-                total_output_tokens += response.usage.output_tokens
+                round_input_tokens = response.usage.input_tokens
+                round_output_tokens = response.usage.output_tokens
+                total_input_tokens += round_input_tokens
+                total_output_tokens += round_output_tokens
+
+            # Calculate cost for this round
+            round_token_usage = TokenUsage(
+                input_tokens=round_input_tokens,
+                output_tokens=round_output_tokens,
+                cached_tokens=0,
+            )
+            round_cost = self._calculate_cost(model, round_token_usage)
 
             # Check for tool use
             tool_use_blocks = [
@@ -174,7 +200,11 @@ class AnthropicAdapter(AgentAdapter):
                         final_output += block.text
                 break
 
-            # Process tool calls
+            # Process tool calls - distribute round cost/latency across tools in this round
+            num_tools_in_round = len(tool_use_blocks)
+            per_tool_latency = api_call_latency / num_tools_in_round
+            per_tool_cost = round_cost / num_tools_in_round
+
             tool_results = []
 
             for tool_block in tool_use_blocks:
@@ -186,7 +216,6 @@ class AnthropicAdapter(AgentAdapter):
                     logger.debug(f"🔧 Tool call: {tool_name}({tool_input})")
 
                 # Execute tool
-                tool_start = datetime.now()
                 tool_result = None
                 tool_error = None
 
@@ -206,8 +235,8 @@ class AnthropicAdapter(AgentAdapter):
                         tool_error = str(e)
                         tool_result = f"Error: {e}"
                 else:
-                    # Check for mock_response in tool definition
-                    mock_response = self._get_mock_response(tool_name, tools)
+                    # Check for mock_response in tool definition (use original tools with mocks)
+                    mock_response = self._get_mock_response(tool_name, tools_with_mocks)
                     if mock_response is not None:
                         tool_result = mock_response
                         if self.verbose:
@@ -215,10 +244,7 @@ class AnthropicAdapter(AgentAdapter):
                     else:
                         tool_result = f"Tool '{tool_name}' executed (no executor provided)"
 
-                tool_end = datetime.now()
-                tool_latency = (tool_end - tool_start).total_seconds() * 1000
-
-                # Record step
+                # Record step with actual API latency/cost for this round
                 step_trace = StepTrace(
                     step_id=tool_id,
                     step_name=tool_name,
@@ -227,7 +253,7 @@ class AnthropicAdapter(AgentAdapter):
                     output=tool_result if not tool_error else None,
                     error=tool_error,
                     success=tool_error is None,
-                    metrics=StepMetrics(latency=tool_latency, cost=0.0),
+                    metrics=StepMetrics(latency=per_tool_latency, cost=per_tool_cost),
                 )
                 steps.append(step_trace)
 
@@ -257,7 +283,7 @@ class AnthropicAdapter(AgentAdapter):
 
         end_time = datetime.now()
 
-        # Calculate metrics
+        # Calculate total metrics
         token_usage = TokenUsage(
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,
@@ -285,6 +311,13 @@ class AnthropicAdapter(AgentAdapter):
                 total_tokens=token_usage,
             ),
         )
+
+    def _get_mock_response(self, tool_name: str, tools: List[Dict[str, Any]]) -> Any:
+        """Get mock response for a tool from tool definitions."""
+        for tool in tools:
+            if tool.get("name") == tool_name:
+                return tool.get("mock_response")
+        return None
 
     def _calculate_cost(self, model: str, token_usage: TokenUsage) -> float:
         """Calculate cost based on model pricing."""

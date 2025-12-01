@@ -498,6 +498,10 @@ def save_provider_preference(provider: LLMProvider) -> None:
     # Remove existing EVAL_PROVIDER line if present
     new_lines = [line for line in existing_lines if not line.startswith("EVAL_PROVIDER=")]
 
+    # Ensure last line ends with newline before appending
+    if new_lines and not new_lines[-1].endswith("\n"):
+        new_lines[-1] += "\n"
+
     # Add new provider preference
     new_lines.append(provider_line)
 

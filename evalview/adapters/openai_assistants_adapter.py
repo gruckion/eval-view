@@ -142,7 +142,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         )
 
     async def _extract_steps(self, client, thread_id: str, run_id: str) -> List[StepTrace]:
-        """Extract steps from run."""
+        """Extract steps from run with actual timing from OpenAI."""
         steps = []
 
         # Get run steps
@@ -152,6 +152,12 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         )
 
         for i, step in enumerate(run_steps.data):
+            # Calculate actual step latency from timestamps
+            step_latency = 0.0
+            if hasattr(step, 'created_at') and hasattr(step, 'completed_at'):
+                if step.created_at and step.completed_at:
+                    step_latency = (step.completed_at - step.created_at) * 1000  # ms
+
             if step.type == "tool_calls":
                 # Extract tool calls
                 for tool_call in step.step_details.tool_calls:
@@ -171,7 +177,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                                 else None
                             ),
                             success=True,
-                            metrics=StepMetrics(latency=0.0, cost=0.0),
+                            metrics=StepMetrics(latency=step_latency, cost=0.0),
                         )
                         steps.append(step_trace)
 
@@ -185,7 +191,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                                 [log.get("text", "") for log in tool_call.code_interpreter.outputs]
                             ),
                             success=True,
-                            metrics=StepMetrics(latency=0.0, cost=0.0),
+                            metrics=StepMetrics(latency=step_latency, cost=0.0),
                         )
                         steps.append(step_trace)
 
@@ -197,7 +203,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                             parameters={},
                             output=None,
                             success=True,
-                            metrics=StepMetrics(latency=0.0, cost=0.0),
+                            metrics=StepMetrics(latency=step_latency, cost=0.0),
                         )
                         steps.append(step_trace)
 
@@ -210,7 +216,7 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                     parameters={},
                     output=None,
                     success=True,
-                    metrics=StepMetrics(latency=0.0, cost=0.0),
+                    metrics=StepMetrics(latency=step_latency, cost=0.0),
                 )
                 steps.append(step_trace)
 
@@ -231,17 +237,38 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                 cached_tokens=0,
             )
 
-        # Estimate cost based on model and tokens
-        # This is approximate - adjust pricing as needed
+        # Calculate cost based on model and tokens (2024-2025 pricing)
         total_cost = 0.0
         if token_usage and hasattr(run, "model"):
             model = run.model
-            total_token_count = token_usage.total_tokens
-            # Rough estimates - update with actual pricing
-            if "gpt-4" in model:
-                total_cost = (total_token_count / 1000) * 0.03  # $0.03 per 1K tokens
+            input_tokens = token_usage.input_tokens
+            output_tokens = token_usage.output_tokens
+
+            # GPT-4o pricing (per 1M tokens)
+            if "gpt-4o" in model:
+                total_cost = (input_tokens / 1_000_000) * 2.50 + (output_tokens / 1_000_000) * 10.00
+            # GPT-4 Turbo pricing
+            elif "gpt-4-turbo" in model or "gpt-4-1106" in model:
+                total_cost = (input_tokens / 1_000_000) * 10.00 + (output_tokens / 1_000_000) * 30.00
+            # GPT-4 pricing
+            elif "gpt-4" in model:
+                total_cost = (input_tokens / 1_000_000) * 30.00 + (output_tokens / 1_000_000) * 60.00
+            # GPT-3.5 Turbo pricing
             elif "gpt-3.5" in model:
-                total_cost = (total_token_count / 1000) * 0.002  # $0.002 per 1K tokens
+                total_cost = (input_tokens / 1_000_000) * 0.50 + (output_tokens / 1_000_000) * 1.50
+
+        # Distribute cost proportionally based on each step's latency
+        if steps and total_cost > 0:
+            total_step_latency = sum(s.metrics.latency for s in steps)
+            if total_step_latency > 0:
+                for step in steps:
+                    # Cost proportional to time spent
+                    step.metrics.cost = total_cost * (step.metrics.latency / total_step_latency)
+            else:
+                # Fallback: distribute evenly if no timing data
+                per_step_cost = total_cost / len(steps)
+                for step in steps:
+                    step.metrics.cost = per_step_cost
 
         return ExecutionMetrics(
             total_cost=total_cost,

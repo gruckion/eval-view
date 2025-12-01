@@ -1342,9 +1342,22 @@ async def _run_async(
         )
     elif adapter_type == "anthropic":
         # Anthropic Claude adapter for direct API testing
+        # Check for API key first
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            console.print("[red]❌ ANTHROPIC_API_KEY not found in environment.[/red]")
+            console.print("[dim]Set it in your .env.local file or export it:[/dim]")
+            console.print("[dim]  export ANTHROPIC_API_KEY=sk-ant-...[/dim]")
+            return
+
         from evalview.adapters.anthropic_adapter import AnthropicAdapter
+
+        # Handle model config - can be string or dict with 'name' key
+        anthropic_model = config.get("model", "claude-sonnet-4-5-20250929")
+        if isinstance(anthropic_model, dict):
+            anthropic_model = anthropic_model.get("name", "claude-sonnet-4-5-20250929")
+
         adapter = AnthropicAdapter(
-            model=config.get("model", "claude-sonnet-4-5-20250929"),
+            model=anthropic_model,
             tools=config.get("tools", []),
             system_prompt=config.get("system_prompt"),
             max_tokens=config.get("max_tokens", 4096),
