@@ -130,6 +130,61 @@ Database config is optional – EvalView only uses it if you enable it in config
 
 ---
 
+## Behavior Coverage (not line coverage)
+
+Line coverage doesn't work for LLMs. Instead, EvalView focuses on **behavior coverage**:
+
+| Dimension | What it measures |
+|-----------|------------------|
+| **Tasks covered** | Which real-world scenarios have tests? |
+| **Tools exercised** | Are all your agent's tools being tested? |
+| **Paths hit** | Are multi-step workflows tested end-to-end? |
+| **Eval dimensions** | Are you checking correctness, safety, cost, latency? |
+
+**The loop:** weird prod session → turn it into a regression test → it shows up in your coverage.
+
+```bash
+# Compact summary for screenshots / sharing
+evalview run --summary
+```
+
+```
+━━━ EvalView Summary ━━━
+Suite: analytics_agent
+Tests: 7 passed, 2 failed
+
+Failures:
+  ✗ cohort: large result set     cost +240%
+  ✗ doc QA: long context         missing tool: chunking
+
+Deltas vs last run:
+  Tokens:  +188%  ↑
+  Latency: +95ms  ↑
+  Cost:    +$0.12 ↑
+
+⚠️  Regressions detected
+```
+
+```bash
+# Behavior coverage report
+evalview run --coverage
+```
+
+```
+━━━ Behavior Coverage ━━━
+Suite: analytics_agent
+
+Tasks:      9/9 scenarios (100%)
+Tools:      6/8 exercised (75%)
+            missing: chunking, summarize
+Paths:      3/3 multi-step workflows (100%)
+Dimensions: correctness ✓, output ✓, cost ✗, latency ✓, safety ✓
+
+Overall:    92% behavior coverage
+```
+
+---
+
 ## What it does (in practice)
 
 - **Write test cases in YAML** – Define inputs, required tools, and scoring thresholds
@@ -294,6 +349,8 @@ Options:
   --max-retries N      Retry flaky tests N times (default: 0)
   --watch              Re-run tests on file changes
   --html-report PATH   Generate interactive HTML report
+  --summary            Compact, screenshot-friendly output
+  --coverage           Show behavior coverage report
 ```
 
 ### `evalview expand`

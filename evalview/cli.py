@@ -1144,6 +1144,16 @@ thresholds:
     type=click.Path(),
     help="Generate HTML report to specified path",
 )
+@click.option(
+    "--summary",
+    is_flag=True,
+    help="Compact, screenshot-friendly output (great for sharing)",
+)
+@click.option(
+    "--coverage",
+    is_flag=True,
+    help="Show behavior coverage report (tasks, tools, paths, eval dimensions)",
+)
 def run(
     path: Optional[str],
     pattern: str,
@@ -1160,6 +1170,8 @@ def run(
     retry_delay: float,
     watch: bool,
     html_report: str,
+    summary: bool,
+    coverage: bool,
 ):
     """Run test cases against the agent.
 
@@ -1168,7 +1180,7 @@ def run(
     """
     asyncio.run(_run_async(
         path, pattern, test, filter, output, verbose, track, compare_baseline, debug,
-        sequential, max_workers, max_retries, retry_delay, watch, html_report
+        sequential, max_workers, max_retries, retry_delay, watch, html_report, summary, coverage
     ))
 
 
@@ -1188,6 +1200,8 @@ async def _run_async(
     retry_delay: float = 1.0,
     watch: bool = False,
     html_report: str = None,
+    summary: bool = False,
+    coverage: bool = False,
 ):
     """Async implementation of run command."""
     import fnmatch
@@ -1901,7 +1915,29 @@ async def _run_async(
     # Print summary
     console.print()
     reporter = ConsoleReporter()
-    reporter.print_summary(results)
+    if summary:
+        # Compact, screenshot-friendly output
+        # Get suite name from path
+        suite_name = None
+        if path:
+            suite_name = Path(path).name if Path(path).is_dir() else Path(path).stem
+
+        # Load previous results for delta comparison
+        previous_results = None
+        output_dir = Path(output)
+        if output_dir.exists():
+            previous_results = JSONReporter.get_latest_results(output_dir)
+
+        reporter.print_compact_summary(results, suite_name=suite_name, previous_results=previous_results)
+    else:
+        reporter.print_summary(results)
+
+    # Print behavior coverage report if enabled
+    if coverage:
+        suite_name = None
+        if path:
+            suite_name = Path(path).name if Path(path).is_dir() else Path(path).stem
+        reporter.print_coverage_report(test_cases, results, suite_name=suite_name)
 
     # Print regression analysis if enabled
     if compare_baseline and regression_reports:

@@ -1,13 +1,13 @@
 """Console reporter for evaluation results."""
 
 import json
-from typing import List, Any
+from typing import List, Any, Optional, Dict
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.tree import Tree
 from rich.text import Text
-from evalview.core.types import EvaluationResult, StepTrace
+from evalview.core.types import EvaluationResult, StepTrace, TestCase
 
 
 class ConsoleReporter:
@@ -394,3 +394,331 @@ class ConsoleReporter:
                 result.trace.steps, title=f"Execution Flow ({len(result.trace.steps)} steps)"
             )
             self.print_step_table(result.trace.steps)
+
+    def print_compact_summary(
+        self,
+        results: List[EvaluationResult],
+        suite_name: Optional[str] = None,
+        previous_results: Optional[List[EvaluationResult]] = None,
+    ) -> None:
+        """
+        Print a compact, screenshot-friendly summary of evaluation results.
+
+        Args:
+            results: List of evaluation results
+            suite_name: Optional name for the test suite
+            previous_results: Optional previous run results for delta comparison
+        """
+        if not results:
+            self.console.print("[yellow]No results to display[/yellow]")
+            return
+
+        passed = sum(1 for r in results if r.passed)
+        failed = len(results) - passed
+
+        # Header
+        self.console.print()
+        self.console.print("[bold]━━━ EvalView Summary ━━━[/bold]")
+
+        # Suite name
+        if suite_name:
+            self.console.print(f"[dim]Suite:[/dim] {suite_name}")
+
+        # Test counts
+        passed_str = f"[green]{passed} passed[/green]"
+        failed_str = f"[red]{failed} failed[/red]" if failed > 0 else f"{failed} failed"
+        self.console.print(f"[dim]Tests:[/dim] {passed_str}, {failed_str}")
+
+        # Failures section
+        failed_results = [r for r in results if not r.passed]
+        if failed_results:
+            self.console.print()
+            self.console.print("[bold]Failures:[/bold]")
+            for result in failed_results:
+                failure_reason = self._get_compact_failure_reason(result)
+                self.console.print(f"  [red]✗[/red] {result.test_case:<30} [dim]{failure_reason}[/dim]")
+
+        # Deltas vs last run
+        if previous_results:
+            deltas = self._compute_deltas(results, previous_results)
+            if deltas:
+                self.console.print()
+                self.console.print("[bold]Deltas vs last run:[/bold]")
+
+                # Tokens delta
+                if deltas.get("tokens_delta") is not None:
+                    tokens_pct = deltas["tokens_delta"]
+                    arrow = "↑" if tokens_pct > 0 else "↓" if tokens_pct < 0 else "─"
+                    color = "red" if tokens_pct > 10 else "green" if tokens_pct < -10 else "yellow"
+                    sign = "+" if tokens_pct > 0 else ""
+                    self.console.print(f"  [dim]Tokens:[/dim]  [{color}]{sign}{tokens_pct:.0f}%  {arrow}[/{color}]")
+
+                # Latency delta
+                if deltas.get("latency_delta") is not None:
+                    latency_ms = deltas["latency_delta"]
+                    arrow = "↑" if latency_ms > 0 else "↓" if latency_ms < 0 else "─"
+                    color = "red" if latency_ms > 100 else "green" if latency_ms < -100 else "yellow"
+                    sign = "+" if latency_ms > 0 else ""
+                    self.console.print(f"  [dim]Latency:[/dim] [{color}]{sign}{latency_ms:.0f}ms  {arrow}[/{color}]")
+
+                # Cost delta
+                if deltas.get("cost_delta") is not None:
+                    cost = deltas["cost_delta"]
+                    arrow = "↑" if cost > 0 else "↓" if cost < 0 else "─"
+                    color = "red" if cost > 0.05 else "green" if cost < -0.05 else "yellow"
+                    sign = "+" if cost > 0 else ""
+                    self.console.print(f"  [dim]Cost:[/dim]    [{color}]{sign}${abs(cost):.2f}  {arrow}[/{color}]")
+
+        # Regressions warning
+        if failed > 0:
+            self.console.print()
+            self.console.print("[bold yellow]⚠️  Regressions detected[/bold yellow]")
+        else:
+            self.console.print()
+            self.console.print("[bold green]✓ All tests passed[/bold green]")
+
+        self.console.print()
+
+    def _get_compact_failure_reason(self, result: EvaluationResult) -> str:
+        """Get a compact, one-line failure reason for display."""
+        reasons = []
+
+        # Check tool issues
+        tool_eval = result.evaluations.tool_accuracy
+        if tool_eval.missing:
+            reasons.append(f"missing tool: {tool_eval.missing[0]}")
+        elif tool_eval.unexpected:
+            reasons.append(f"unexpected tool: {tool_eval.unexpected[0]}")
+
+        # Check cost threshold
+        if not result.evaluations.cost.passed:
+            cost = result.evaluations.cost
+            if cost.threshold and cost.threshold > 0:
+                pct = ((cost.total_cost - cost.threshold) / cost.threshold) * 100
+                reasons.append(f"cost +{pct:.0f}%")
+
+        # Check latency threshold
+        if not result.evaluations.latency.passed:
+            lat = result.evaluations.latency
+            if lat.threshold and lat.threshold > 0:
+                pct = ((lat.total_latency - lat.threshold) / lat.threshold) * 100
+                reasons.append(f"latency +{pct:.0f}%")
+
+        # Check hallucination
+        if result.evaluations.hallucination and not result.evaluations.hallucination.passed:
+            reasons.append("hallucination detected")
+
+        # Check safety
+        if result.evaluations.safety and not result.evaluations.safety.passed:
+            reasons.append(f"safety: {result.evaluations.safety.severity}")
+
+        # Check score
+        min_score = result.min_score if result.min_score is not None else 75
+        if result.score < min_score and not reasons:
+            reasons.append(f"score {result.score:.0f} < {min_score}")
+
+        return reasons[0] if reasons else "below threshold"
+
+    def _compute_deltas(
+        self,
+        current: List[EvaluationResult],
+        previous: List[EvaluationResult],
+    ) -> Dict[str, float]:
+        """Compute deltas between current and previous run."""
+        deltas = {}
+
+        # Compute totals for current run
+        current_tokens = sum(
+            r.trace.metrics.total_tokens.total_tokens
+            for r in current
+            if r.trace.metrics.total_tokens
+        )
+        current_latency = sum(r.trace.metrics.total_latency for r in current)
+        current_cost = sum(r.trace.metrics.total_cost for r in current)
+
+        # Compute totals for previous run
+        prev_tokens = sum(
+            r.trace.metrics.total_tokens.total_tokens
+            for r in previous
+            if r.trace.metrics.total_tokens
+        )
+        prev_latency = sum(r.trace.metrics.total_latency for r in previous)
+        prev_cost = sum(r.trace.metrics.total_cost for r in previous)
+
+        # Calculate deltas
+        if prev_tokens > 0:
+            deltas["tokens_delta"] = ((current_tokens - prev_tokens) / prev_tokens) * 100
+        if prev_latency > 0:
+            deltas["latency_delta"] = current_latency - prev_latency
+        if prev_cost > 0:
+            deltas["cost_delta"] = current_cost - prev_cost
+
+        return deltas
+
+    def print_coverage_report(
+        self,
+        test_cases: List[TestCase],
+        results: List[EvaluationResult],
+        suite_name: Optional[str] = None,
+    ) -> None:
+        """
+        Print a behavior coverage report.
+
+        Shows coverage across:
+        - Tasks: scenarios tested
+        - Tools: agent tools exercised
+        - Paths: multi-step workflows
+        - Eval dimensions: correctness, safety, cost, latency checks
+
+        Args:
+            test_cases: List of test case definitions
+            results: List of evaluation results
+            suite_name: Optional name for the test suite
+        """
+        if not test_cases:
+            self.console.print("[yellow]No test cases to analyze[/yellow]")
+            return
+
+        # Header
+        self.console.print()
+        self.console.print("[bold]━━━ Behavior Coverage ━━━[/bold]")
+
+        if suite_name:
+            self.console.print(f"[dim]Suite:[/dim] {suite_name}")
+        self.console.print()
+
+        # 1. Tasks Coverage
+        total_tasks = len(test_cases)
+        executed_tasks = len(results)
+        passed_tasks = sum(1 for r in results if r.passed)
+        task_pct = (executed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+
+        task_color = "green" if task_pct == 100 else "yellow" if task_pct >= 50 else "red"
+        self.console.print(f"[bold]Tasks:[/bold]      [{task_color}]{executed_tasks}/{total_tasks} scenarios ({task_pct:.0f}%)[/{task_color}]")
+        if passed_tasks < executed_tasks:
+            self.console.print(f"            [dim]({passed_tasks} passing, {executed_tasks - passed_tasks} failing)[/dim]")
+
+        # 2. Tools Coverage
+        # Collect all expected tools from test cases
+        expected_tools = set()
+        for tc in test_cases:
+            if tc.expected.tools:
+                expected_tools.update(tc.expected.tools)
+            if tc.expected.tool_sequence:
+                expected_tools.update(tc.expected.tool_sequence)
+            if tc.expected.sequence:
+                expected_tools.update(tc.expected.sequence)
+
+        # Collect all actually called tools from results
+        exercised_tools = set()
+        for result in results:
+            if result.trace.steps:
+                for step in result.trace.steps:
+                    if step.tool_name:
+                        exercised_tools.add(step.tool_name)
+
+        # Also add tools from evaluations
+        for result in results:
+            if result.evaluations.tool_accuracy.correct:
+                exercised_tools.update(result.evaluations.tool_accuracy.correct)
+
+        # Calculate tool coverage
+        if expected_tools:
+            tools_covered = expected_tools & exercised_tools
+            tool_pct = (len(tools_covered) / len(expected_tools) * 100) if expected_tools else 0
+            tool_color = "green" if tool_pct == 100 else "yellow" if tool_pct >= 50 else "red"
+            self.console.print(f"[bold]Tools:[/bold]      [{tool_color}]{len(tools_covered)}/{len(expected_tools)} exercised ({tool_pct:.0f}%)[/{tool_color}]")
+
+            # Show missing tools
+            missing_tools = expected_tools - exercised_tools
+            if missing_tools:
+                self.console.print(f"            [dim]missing: {', '.join(sorted(missing_tools))}[/dim]")
+        else:
+            self.console.print(f"[bold]Tools:[/bold]      [dim]no tool expectations defined[/dim]")
+
+        # 3. Paths Coverage (multi-step workflows)
+        # Count tests with sequence requirements
+        sequence_tests = [tc for tc in test_cases if tc.expected.tool_sequence or tc.expected.sequence]
+        total_paths = len(sequence_tests)
+
+        if total_paths > 0:
+            # Check which sequence tests passed
+            sequence_test_names = {tc.name for tc in sequence_tests}
+            sequence_results = [r for r in results if r.test_case in sequence_test_names]
+            paths_passed = sum(1 for r in sequence_results if r.evaluations.sequence_correctness.correct)
+
+            path_pct = (paths_passed / total_paths * 100) if total_paths > 0 else 0
+            path_color = "green" if path_pct == 100 else "yellow" if path_pct >= 50 else "red"
+            self.console.print(f"[bold]Paths:[/bold]      [{path_color}]{paths_passed}/{total_paths} multi-step workflows ({path_pct:.0f}%)[/{path_color}]")
+        else:
+            self.console.print(f"[bold]Paths:[/bold]      [dim]no sequence tests defined[/dim]")
+
+        # 4. Eval Dimensions
+        self.console.print(f"[bold]Dimensions:[/bold]")
+
+        # Check which dimensions are being tested
+        has_tool_check = any(tc.expected.tools or tc.expected.tool_sequence for tc in test_cases)
+        has_output_check = any(tc.expected.output for tc in test_cases)
+        has_cost_check = any(tc.thresholds.max_cost is not None for tc in test_cases)
+        has_latency_check = any(tc.thresholds.max_latency is not None for tc in test_cases)
+        has_hallucination_check = any(
+            tc.expected.hallucination is not None or (tc.checks is None or tc.checks.hallucination)
+            for tc in test_cases
+        )
+        has_safety_check = any(
+            tc.expected.safety is not None or (tc.checks is None or tc.checks.safety)
+            for tc in test_cases
+        )
+
+        dimensions = []
+        if has_tool_check:
+            # Check if tool checks pass
+            tool_pass = all(r.evaluations.tool_accuracy.accuracy == 1.0 for r in results) if results else False
+            dimensions.append(("correctness", tool_pass))
+        if has_output_check:
+            output_pass = all(r.evaluations.output_quality.score >= 70 for r in results) if results else False
+            dimensions.append(("output", output_pass))
+        if has_cost_check:
+            cost_pass = all(r.evaluations.cost.passed for r in results) if results else False
+            dimensions.append(("cost", cost_pass))
+        if has_latency_check:
+            latency_pass = all(r.evaluations.latency.passed for r in results) if results else False
+            dimensions.append(("latency", latency_pass))
+        if has_hallucination_check:
+            hall_pass = all(
+                r.evaluations.hallucination is None or r.evaluations.hallucination.passed
+                for r in results
+            ) if results else False
+            dimensions.append(("hallucination", hall_pass))
+        if has_safety_check:
+            safety_pass = all(
+                r.evaluations.safety is None or r.evaluations.safety.passed
+                for r in results
+            ) if results else False
+            dimensions.append(("safety", safety_pass))
+
+        if dimensions:
+            dim_strs = []
+            for name, passed in dimensions:
+                icon = "[green]✓[/green]" if passed else "[red]✗[/red]"
+                dim_strs.append(f"{name} {icon}")
+            self.console.print(f"            {', '.join(dim_strs)}")
+        else:
+            self.console.print(f"            [dim]no thresholds configured[/dim]")
+
+        # Overall coverage score
+        self.console.print()
+        coverage_scores = []
+        if total_tasks > 0:
+            coverage_scores.append(task_pct)
+        if expected_tools:
+            coverage_scores.append(tool_pct)
+        if total_paths > 0:
+            coverage_scores.append(path_pct)
+
+        if coverage_scores:
+            overall_coverage = sum(coverage_scores) / len(coverage_scores)
+            cov_color = "green" if overall_coverage >= 80 else "yellow" if overall_coverage >= 50 else "red"
+            self.console.print(f"[bold]Overall:[/bold]    [{cov_color}]{overall_coverage:.0f}% behavior coverage[/{cov_color}]")
+
+        self.console.print()
