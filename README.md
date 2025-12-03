@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/hidai25/eval-view/actions/workflows/ci.yml/badge.svg)](https://github.com/hidai25/eval-view/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub stars](https://img.shields.io/github/stars/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/hidai25/eval-view?style=social)](https://github.com/hidai25/eval-view/network/members)
 
@@ -123,7 +123,7 @@ Database config is optional – EvalView only uses it if you enable it in config
 
 ## Why EvalView?
 
-- 🔓 **Fully Open Source** – MIT-licensed, runs entirely on your infra, no SaaS lock-in
+- 🔓 **Fully Open Source** – Apache 2.0 licensed, runs entirely on your infra, no SaaS lock-in
 - 🔌 **Framework-agnostic** – Works with LangGraph, CrewAI, OpenAI, Anthropic, or any HTTP API
 - 🚀 **Production-ready** – Parallel execution, CI/CD integration, configurable thresholds
 - 🧩 **Extensible** – Custom adapters, evaluators, and reporters for your stack
@@ -477,7 +477,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - see LICENSE file for details.
+EvalView is open source software licensed under the [Apache License 2.0](LICENSE).
 
 ## Support
 
