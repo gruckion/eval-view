@@ -8,7 +8,6 @@ Security Note:
 Supports multiple LLM providers: OpenAI, Anthropic, Gemini, and Grok.
 """
 
-import os
 from typing import Optional, List, Dict, Any
 from evalview.core.types import (
     TestCase,

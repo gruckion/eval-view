@@ -436,7 +436,7 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                     if available:
                         # Offer to use an available provider instead
                         available_names = [PROVIDER_CONFIGS[p].display_name for p, _ in available]
-                        console.print(f"\n[bold]What would you like to do?[/bold]")
+                        console.print("\n[bold]What would you like to do?[/bold]")
                         console.print(f"  [cyan]1.[/cyan] Add {config.display_name} API key")
                         for i, (avail_provider, _) in enumerate(available, 2):
                             avail_config = PROVIDER_CONFIGS[avail_provider]
@@ -449,7 +449,7 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                             # User wants to add the key
                             console.print(f"\n[bold]To add {config.display_name} API key:[/bold]")
                             console.print(f"  [cyan]export {config.env_var}='your-key-here'[/cyan]")
-                            console.print(f"\nOr add to .env.local:")
+                            console.print("\nOr add to .env.local:")
                             console.print(f"  [cyan]echo '{config.env_var}=your-key-here' >> .env.local[/cyan]")
                             console.print(f"\n[dim]Get your API key at: {config.api_key_url}[/dim]")
                             return None
@@ -471,7 +471,7 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                         # No alternatives available
                         console.print(f"\n[bold]To add {config.display_name} API key:[/bold]")
                         console.print(f"  [cyan]export {config.env_var}='your-key-here'[/cyan]")
-                        console.print(f"\nOr add to .env.local:")
+                        console.print("\nOr add to .env.local:")
                         console.print(f"  [cyan]echo '{config.env_var}=your-key-here' >> .env.local[/cyan]")
                         console.print(f"\n[dim]Get your API key at: {config.api_key_url}[/dim]")
                         return None

@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 from evalview.core.llm_provider import LLMProvider
 from evalview.evaluators.evaluator import Evaluator

@@ -18,12 +18,9 @@ from evalview.core.loader import TestCaseLoader
 from evalview.core.pricing import get_model_pricing_info
 from evalview.core.llm_provider import (
     detect_available_providers,
-    get_missing_provider_message,
-    get_provider_status,
     get_or_select_provider,
     save_provider_preference,
     PROVIDER_CONFIGS,
-    LLMProvider,
 )
 from evalview.adapters.http_adapter import HTTPAdapter
 from evalview.adapters.tapescope_adapter import TapeScopeAdapter
@@ -385,7 +382,6 @@ pydantic>=2.0.0
 def quickstart():
     """🚀 Quick start: Set up and run a demo in under 2 minutes."""
     import subprocess
-    import signal
     import atexit
 
     console.print("[blue]━━━ EvalView Quickstart ━━━[/blue]\n")
@@ -788,7 +784,6 @@ if __name__ == "__main__":
 
 async def _init_wizard_async(dir: str):
     """Interactive wizard to auto-detect and configure agents."""
-    import httpx
 
     console.print("[blue]━━━ EvalView Setup Wizard ━━━[/blue]\n")
     console.print("[cyan]🔍 Auto-detecting agent servers...[/cyan]\n")
@@ -1566,7 +1561,7 @@ async def _run_async(
             console.print("  [2] Sequential (easier to follow)")
             run_mode = click.prompt("Select run mode", type=int, default=1)
             if run_mode == 2:
-                parallel = False
+                _ = False  # Sequential mode (not yet implemented)
                 console.print("[dim]Running tests sequentially...[/dim]\n")
             else:
                 console.print("[dim]Running tests in parallel...[/dim]\n")
@@ -2025,7 +2020,7 @@ async def _run_async(
             from evalview.reporters.html_reporter import HTMLReporter
             html_reporter = HTMLReporter()
             html_path = html_reporter.generate(results, html_report)
-            console.print(f"\n[bold green]📊 HTML Report Generated![/bold green]")
+            console.print("\n[bold green]📊 HTML Report Generated![/bold green]")
             console.print(f"   [link=file://{Path(html_path).absolute()}]{html_path}[/link]")
             console.print(f"   [dim]Open in browser: open {html_path}[/dim]\n")
         except ImportError as e:
@@ -2235,7 +2230,6 @@ def connect(endpoint: str):
 
 async def _connect_async(endpoint: Optional[str]):
     """Async implementation of connect command."""
-    import httpx
 
     console.print("[blue]🔍 Testing agent connection...[/blue]\n")
 
@@ -3213,7 +3207,7 @@ async def _expand_async(
     if focus:
         console.print(f"[dim]   Focus: {focus}[/dim]")
     if edge_cases:
-        console.print(f"[dim]   Including edge cases[/dim]")
+        console.print("[dim]   Including edge cases[/dim]")
     console.print()
 
     try:

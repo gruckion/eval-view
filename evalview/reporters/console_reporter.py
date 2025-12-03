@@ -206,21 +206,21 @@ class ConsoleReporter:
 
             # Show query
             if result.input_query:
-                self.console.print(f"\n[bold]Query:[/bold]")
+                self.console.print("\n[bold]Query:[/bold]")
                 # Wrap long queries
                 query = result.input_query[:500] + "..." if len(result.input_query) > 500 else result.input_query
                 self.console.print(f"  {query}")
 
             # Show agent response
             if result.actual_output:
-                self.console.print(f"\n[bold]Response:[/bold]")
+                self.console.print("\n[bold]Response:[/bold]")
                 # Truncate long responses
                 output = result.actual_output[:800] + "..." if len(result.actual_output) > 800 else result.actual_output
                 for line in output.split('\n'):
                     self.console.print(f"  {line}")
 
             # Show evaluation scores
-            self.console.print(f"\n[bold]Evaluation Scores:[/bold]")
+            self.console.print("\n[bold]Evaluation Scores:[/bold]")
 
             tool_eval = result.evaluations.tool_accuracy
             output_eval = result.evaluations.output_quality
@@ -258,7 +258,7 @@ class ConsoleReporter:
 
             # Show failure reasons if failed
             if not result.passed:
-                self.console.print(f"\n[bold red]Failure Reasons:[/bold red]")
+                self.console.print("\n[bold red]Failure Reasons:[/bold red]")
 
                 # Score below threshold
                 if result.score < min_score:
@@ -307,7 +307,7 @@ class ConsoleReporter:
 
                 # Output quality rationale
                 if output_eval.rationale:
-                    self.console.print(f"\n[dim]Output Quality Rationale:[/dim]")
+                    self.console.print("\n[dim]Output Quality Rationale:[/dim]")
                     rationale = output_eval.rationale[:400] + "..." if len(output_eval.rationale) > 400 else output_eval.rationale
                     self.console.print(f"[dim]  {rationale}[/dim]")
 
@@ -634,7 +634,7 @@ class ConsoleReporter:
             if missing_tools:
                 self.console.print(f"            [dim]missing: {', '.join(sorted(missing_tools))}[/dim]")
         else:
-            self.console.print(f"[bold]Tools:[/bold]      [dim]no tool expectations defined[/dim]")
+            self.console.print("[bold]Tools:[/bold]      [dim]no tool expectations defined[/dim]")
 
         # 3. Paths Coverage (multi-step workflows)
         # Count tests with sequence requirements
@@ -651,10 +651,10 @@ class ConsoleReporter:
             path_color = "green" if path_pct == 100 else "yellow" if path_pct >= 50 else "red"
             self.console.print(f"[bold]Paths:[/bold]      [{path_color}]{paths_passed}/{total_paths} multi-step workflows ({path_pct:.0f}%)[/{path_color}]")
         else:
-            self.console.print(f"[bold]Paths:[/bold]      [dim]no sequence tests defined[/dim]")
+            self.console.print("[bold]Paths:[/bold]      [dim]no sequence tests defined[/dim]")
 
         # 4. Eval Dimensions
-        self.console.print(f"[bold]Dimensions:[/bold]")
+        self.console.print("[bold]Dimensions:[/bold]")
 
         # Check which dimensions are being tested
         has_tool_check = any(tc.expected.tools or tc.expected.tool_sequence for tc in test_cases)
@@ -704,7 +704,7 @@ class ConsoleReporter:
                 dim_strs.append(f"{name} {icon}")
             self.console.print(f"            {', '.join(dim_strs)}")
         else:
-            self.console.print(f"            [dim]no thresholds configured[/dim]")
+            self.console.print("            [dim]no thresholds configured[/dim]")
 
         # Overall coverage score
         self.console.print()

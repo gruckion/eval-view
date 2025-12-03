@@ -3,7 +3,6 @@
 Supports multiple LLM providers: OpenAI, Anthropic, Gemini, and Grok.
 """
 
-import os
 import re
 from typing import Optional, Tuple, List
 
