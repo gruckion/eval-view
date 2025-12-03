@@ -445,6 +445,17 @@ evalview/
 
 ---
 
+## Examples
+
+- [LangGraph Integration](examples/langgraph/) - Test LangGraph agents
+- [CrewAI Integration](examples/crewai/) - Test CrewAI agents
+- [Anthropic Claude](examples/anthropic/) - Test Claude API and Claude Agent SDK
+- [Dify Workflows](examples/dify/) - Test Dify AI workflows
+
+**Using Node.js / Next.js?** See [@evalview/node](sdks/node/) for drop-in middleware.
+
+---
+
 ## Roadmap
 
 **Coming Soon:**
