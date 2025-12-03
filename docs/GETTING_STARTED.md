@@ -224,9 +224,9 @@ See `.github/workflows/evalview.yml` for a complete example.
 
 ## Next Steps
 
-- [Full Configuration Reference](./CONFIGURATION.md)
-- [Writing Effective Tests](./TESTING.md)
-- [Advanced Evaluators](./EVALUATORS.md)
+- [YAML Schema Reference](./YAML_SCHEMA.md)
+- [Adapters & Agent Integration](./ADAPTERS.md)
+- [Framework Support](./FRAMEWORK_SUPPORT.md)
 
 ## Need Help?
 
