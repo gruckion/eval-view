@@ -3,10 +3,10 @@
 import os
 import json
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Union
 from datetime import datetime
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from evalview.core.types import TestCase, TestInput, ExpectedBehavior, Thresholds
 
@@ -23,7 +23,7 @@ class TestExpander:
                      If None, auto-detects based on available API keys.
         """
         self.provider, self.message = self._detect_provider(provider)
-        self.client = None
+        self.client: Any = None
         self._init_client()
 
     def _detect_provider(self, forced_provider: Optional[str] = None) -> Tuple[str, Optional[str]]:
@@ -249,7 +249,6 @@ Return JSON in this format:
         )
 
         # Inherit thresholds from base test, with buffer for edge cases
-        thresholds = None
         if base_test.thresholds:
             # Edge cases might fail or be slower, so relax thresholds
             is_edge = variation.get("is_edge_case", False)
@@ -258,6 +257,8 @@ Return JSON in this format:
                 max_cost=base_test.thresholds.max_cost * (1.5 if is_edge else 1.2) if base_test.thresholds.max_cost else None,
                 max_latency=base_test.thresholds.max_latency * (1.5 if is_edge else 1.2) if base_test.thresholds.max_latency else None,
             )
+        else:
+            thresholds = Thresholds(min_score=0.0)
 
         # Inherit input context (e.g., system_prompt) from base test
         input_context = base_test.input.context if base_test.input.context else None
@@ -301,11 +302,11 @@ Return JSON in this format:
             filepath = output_dir / filename
 
             # Convert to dict
-            input_dict = {"query": test_case.input.query}
+            input_dict: Dict[str, Any] = {"query": test_case.input.query}
             if test_case.input.context:
                 input_dict["context"] = test_case.input.context
 
-            test_dict = {
+            test_dict: Dict[str, Any] = {
                 "name": test_case.name,
                 "description": test_case.description,
                 "input": input_dict,

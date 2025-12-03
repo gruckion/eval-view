@@ -220,7 +220,7 @@ class LLMClient:
         else:
             params["max_tokens"] = max_tokens
 
-        response = await client.chat.completions.create(**params)
+        response = await client.chat.completions.create(**params)  # type: ignore[call-overload]
         return json.loads(response.choices[0].message.content or "{}")
 
     async def _anthropic_completion(
@@ -426,7 +426,7 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
 
                 if has_key:
                     # User chose a provider they have a key for
-                    api_key = os.getenv(config.env_var)
+                    api_key = os.getenv(config.env_var) or ""
                     console.print(f"\n[green]Using {config.display_name}[/green]")
                     return provider, api_key
                 else:
