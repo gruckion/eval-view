@@ -203,7 +203,7 @@ class HTTPAdapter(AgentAdapter):
 
             step = StepTrace(
                 step_id=step_data.get("id", f"step-{i}"),
-                step_name=step_data.get("step_name", f"Step {i + 1}"),
+                step_name=step_data.get("step_name") or step_data.get("name") or f"Step {i + 1}",
                 tool_name=tool_name,
                 parameters=parameters,
                 output=output,

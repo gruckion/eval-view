@@ -449,9 +449,11 @@ class TestOutputEvaluator:
     """Tests for OutputEvaluator."""
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_contains_checks_all_pass(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_contains_checks_all_pass(self, mock_chat_completion):
         """Test contains checks when all strings are present."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="What is the capital of France?"),
@@ -471,18 +473,19 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
         assert len(result.contains_checks.passed) == 3
         assert result.contains_checks.failed == []
-        assert result.score == 85  # From mock
+        assert result.score == 85
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_contains_checks_case_insensitive(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_contains_checks_case_insensitive(self, mock_chat_completion):
         """Test that contains checks are case-insensitive."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -500,7 +503,6 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
@@ -509,9 +511,11 @@ class TestOutputEvaluator:
         assert result.contains_checks.failed == []
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_contains_checks_some_fail(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_contains_checks_some_fail(self, mock_chat_completion):
         """Test contains checks when some strings are missing."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -531,7 +535,6 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
@@ -539,9 +542,11 @@ class TestOutputEvaluator:
         assert set(result.contains_checks.failed) == {"London", "Berlin"}
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_not_contains_checks_all_pass(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_not_contains_checks_all_pass(self, mock_chat_completion):
         """Test not_contains checks when prohibited strings are absent."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -561,7 +566,6 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
@@ -569,9 +573,11 @@ class TestOutputEvaluator:
         assert result.not_contains_checks.failed == []
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_not_contains_checks_some_fail(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_not_contains_checks_some_fail(self, mock_chat_completion):
         """Test not_contains checks when some prohibited strings are present."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -589,7 +595,6 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
@@ -597,9 +602,11 @@ class TestOutputEvaluator:
         assert result.not_contains_checks.failed == ["Paris"]
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_no_string_checks(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_no_string_checks(self, mock_chat_completion):
         """Test when no contains/not_contains are specified."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -617,7 +624,6 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
@@ -627,9 +633,11 @@ class TestOutputEvaluator:
         assert result.not_contains_checks.failed == []
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_llm_as_judge_integration(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_llm_as_judge_integration(self, mock_chat_completion):
         """Test LLM-as-judge integration."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "The output correctly answers the question."}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="What is 2+2?"),
@@ -647,18 +655,19 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
         assert result.score == 85
         assert result.rationale == "The output correctly answers the question."
-        mock_openai_client.chat.completions.create.assert_called_once()
+        mock_chat_completion.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("evalview.evaluators.output_evaluator.AsyncOpenAI")
-    async def test_empty_output(self, mock_openai_class, mock_openai_client):
+    @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    async def test_empty_output(self, mock_chat_completion):
         """Test evaluation with empty output."""
+        mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
+
         test_case = TestCaseModel(
             name="test",
             input=TestInputModel(query="test"),
@@ -676,7 +685,6 @@ class TestOutputEvaluator:
         )
 
         evaluator = OutputEvaluator()
-        evaluator.client = mock_openai_client
 
         result = await evaluator.evaluate(test_case, trace)
 
