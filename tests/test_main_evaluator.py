@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch, AsyncMock
 
+from evalview.core.llm_provider import LLMProvider
 from evalview.evaluators.evaluator import Evaluator
 from evalview.core.types import (
     TestCase as TestCaseModel,
@@ -29,13 +30,16 @@ class TestEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    @patch("evalview.core.llm_provider.select_provider")
     async def test_evaluate_all_pass(
         self,
+        mock_select_provider,
         mock_chat_completion,
         sample_test_case,
         sample_execution_trace,
     ):
         """Test complete evaluation when all criteria pass."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         evaluator = Evaluator()
@@ -51,13 +55,16 @@ class TestEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    @patch("evalview.core.llm_provider.select_provider")
     async def test_evaluate_creates_all_evaluations(
         self,
+        mock_select_provider,
         mock_chat_completion,
         sample_test_case,
         sample_execution_trace,
     ):
         """Test that all sub-evaluators are run."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         evaluator = Evaluator()
@@ -71,8 +78,10 @@ class TestEvaluator:
         assert isinstance(result.evaluations.cost, CostEvaluation)
         assert isinstance(result.evaluations.latency, LatencyEvaluation)
 
-    def test_compute_overall_score_perfect(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_overall_score_perfect(self, mock_select_provider):
         """Test score calculation with perfect results."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         evaluations = Evaluations(
@@ -102,8 +111,10 @@ class TestEvaluator:
         # Score = 100 * 0.3 (tool) + 100 * 0.5 (output) + 100 * 0.2 (sequence) = 100
         assert score == 100.0
 
-    def test_compute_overall_score_weighted(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_overall_score_weighted(self, mock_select_provider):
         """Test score calculation with weighted components."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         evaluations = Evaluations(
@@ -134,8 +145,10 @@ class TestEvaluator:
         #       = 15 + 40 + 0 = 55
         assert score == 55.0
 
-    def test_compute_overall_score_zero(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_overall_score_zero(self, mock_select_provider):
         """Test score calculation with all zeros."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         evaluations = Evaluations(
@@ -164,8 +177,10 @@ class TestEvaluator:
 
         assert score == 0.0
 
-    def test_compute_pass_fail_score_threshold(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_pass_fail_score_threshold(self, mock_select_provider):
         """Test pass/fail based on score threshold."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         evaluations = Evaluations(
@@ -207,8 +222,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations, test_case_low_threshold, score)
         assert passed is True
 
-    def test_compute_pass_fail_cost_threshold(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_pass_fail_cost_threshold(self, mock_select_provider):
         """Test pass/fail based on cost threshold."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         # Evaluations with cost failure
@@ -239,8 +256,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations_fail, test_case, score)
         assert passed is False  # Should fail due to cost
 
-    def test_compute_pass_fail_latency_threshold(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_pass_fail_latency_threshold(self, mock_select_provider):
         """Test pass/fail based on latency threshold."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         # Evaluations with latency failure
@@ -271,8 +290,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations_fail, test_case, score)
         assert passed is False  # Should fail due to latency
 
-    def test_compute_pass_fail_all_pass(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_pass_fail_all_pass(self, mock_select_provider):
         """Test pass/fail when all criteria are met."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         evaluations = Evaluations(
@@ -302,8 +323,10 @@ class TestEvaluator:
         passed = evaluator._compute_pass_fail(evaluations, test_case, score)
         assert passed is True
 
-    def test_compute_pass_fail_multiple_failures(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_pass_fail_multiple_failures(self, mock_select_provider):
         """Test pass/fail with multiple failures."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         evaluations = Evaluations(
@@ -335,10 +358,12 @@ class TestEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    @patch("evalview.core.llm_provider.select_provider")
     async def test_evaluate_with_boundary_score(
-        self, mock_chat_completion
+        self, mock_select_provider, mock_chat_completion
     ):
         """Test evaluation with score exactly at threshold."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         evaluator = Evaluator()
@@ -380,10 +405,12 @@ class TestEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    @patch("evalview.core.llm_provider.select_provider")
     async def test_evaluate_score_rounding(
-        self, mock_chat_completion
+        self, mock_select_provider, mock_chat_completion
     ):
         """Test that score is properly rounded to 2 decimal places."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         evaluator = Evaluator()
@@ -422,10 +449,12 @@ class TestEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
+    @patch("evalview.core.llm_provider.select_provider")
     async def test_evaluate_with_no_thresholds(
-        self, mock_chat_completion
+        self, mock_select_provider, mock_chat_completion
     ):
         """Test evaluation when cost/latency thresholds are not specified."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         evaluator = Evaluator()
@@ -463,8 +492,10 @@ class TestEvaluator:
         assert result.evaluations.cost.passed is True
         assert result.evaluations.latency.passed is True
 
-    def test_evaluator_initialization(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_evaluator_initialization(self, mock_select_provider):
         """Test that evaluator initializes correctly."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         # Check that all evaluators are initialized
@@ -474,8 +505,10 @@ class TestEvaluator:
         assert evaluator.cost_evaluator is not None
         assert evaluator.latency_evaluator is not None
 
-    def test_compute_overall_score_weights_sum_to_one(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_overall_score_weights_sum_to_one(self, mock_select_provider):
         """Verify that evaluation weights sum to 1.0 (100%)."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         # Create evaluations with known values
@@ -507,8 +540,10 @@ class TestEvaluator:
         # This verifies that weights sum to 1.0
         assert score == 100.0
 
-    def test_compute_overall_score_only_output_quality(self):
+    @patch("evalview.core.llm_provider.select_provider")
+    def test_compute_overall_score_only_output_quality(self, mock_select_provider):
         """Test score when only output quality is considered (others zero)."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         evaluator = Evaluator()
 
         evaluations = Evaluations(

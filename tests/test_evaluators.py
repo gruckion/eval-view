@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch
 
+from evalview.core.llm_provider import LLMProvider
 from evalview.evaluators.tool_call_evaluator import ToolCallEvaluator
 from evalview.evaluators.sequence_evaluator import SequenceEvaluator
 from evalview.evaluators.output_evaluator import OutputEvaluator
@@ -450,8 +451,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_contains_checks_all_pass(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_contains_checks_all_pass(self, mock_select_provider, mock_chat_completion):
         """Test contains checks when all strings are present."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         test_case = TestCaseModel(
@@ -482,8 +485,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_contains_checks_case_insensitive(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_contains_checks_case_insensitive(self, mock_select_provider, mock_chat_completion):
         """Test that contains checks are case-insensitive."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         test_case = TestCaseModel(
@@ -512,8 +517,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_contains_checks_some_fail(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_contains_checks_some_fail(self, mock_select_provider, mock_chat_completion):
         """Test contains checks when some strings are missing."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         test_case = TestCaseModel(
@@ -543,8 +550,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_not_contains_checks_all_pass(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_not_contains_checks_all_pass(self, mock_select_provider, mock_chat_completion):
         """Test not_contains checks when prohibited strings are absent."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         test_case = TestCaseModel(
@@ -574,8 +583,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_not_contains_checks_some_fail(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_not_contains_checks_some_fail(self, mock_select_provider, mock_chat_completion):
         """Test not_contains checks when some prohibited strings are present."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         test_case = TestCaseModel(
@@ -603,8 +614,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_no_string_checks(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_no_string_checks(self, mock_select_provider, mock_chat_completion):
         """Test when no contains/not_contains are specified."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         test_case = TestCaseModel(
@@ -634,8 +647,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_llm_as_judge_integration(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_llm_as_judge_integration(self, mock_select_provider, mock_chat_completion):
         """Test LLM-as-judge integration."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "The output correctly answers the question."}
 
         test_case = TestCaseModel(
@@ -664,8 +679,10 @@ class TestOutputEvaluator:
 
     @pytest.mark.asyncio
     @patch("evalview.core.llm_provider.LLMClient.chat_completion")
-    async def test_empty_output(self, mock_chat_completion):
+    @patch("evalview.core.llm_provider.select_provider")
+    async def test_empty_output(self, mock_select_provider, mock_chat_completion):
         """Test evaluation with empty output."""
+        mock_select_provider.return_value = (LLMProvider.OPENAI, "fake-key")
         mock_chat_completion.return_value = {"score": 85, "rationale": "Good answer"}
 
         test_case = TestCaseModel(
