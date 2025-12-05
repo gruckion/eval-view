@@ -95,3 +95,11 @@ evalview run
 ## License
 
 MIT
+
+---
+
+EvalView just stopped your agent from:
+- hallucinating tools that don't exist
+- tool-calling itself into bankruptcy
+
+→ Smash ⭐ if it saved your sanity (and your wallet) today
