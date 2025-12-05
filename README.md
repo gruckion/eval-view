@@ -501,3 +501,5 @@ EvalView just stopped your agent from:
 - tool-calling itself into bankruptcy
 
 → Smash ⭐ if it saved your sanity (and your wallet) today
+
+**Ship AI agents with confidence** 🚀
