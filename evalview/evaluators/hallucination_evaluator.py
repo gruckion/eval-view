@@ -187,7 +187,7 @@ class HallucinationEvaluator:
                 }
             )
 
-        prompt = f"""You are a fact-checking system evaluating if an AI agent's response contains hallucinations (made-up information or facts not supported by the tools it used).
+        prompt = f"""You are a fact-checking system evaluating if an AI agent's response contains hallucinations.
 
 Query: {test_case.input.query}
 
@@ -197,11 +197,19 @@ Tool Results Available:
 Agent's Final Response:
 {trace.final_output}
 
-Analyze whether the agent's response contains any hallucinations. Check for:
-1. Claims that contradict the tool results
-2. Made-up facts not present in the tool outputs
-3. Invented data or numbers
-4. False certainty when tools returned errors or no data
+WHAT IS A HALLUCINATION (flag these):
+- Specific facts that contradict the tool results
+- Made-up data, numbers, or statistics not in tool outputs
+- False claims presented as fact (e.g., "The API returned X" when it didn't)
+- Inventing specific details (names, dates, amounts) not from tools
+
+WHAT IS NOT A HALLUCINATION (do NOT flag these):
+- General advice or recommendations (e.g., "consider consulting a professional")
+- Common knowledge or widely-known facts
+- Helpful context that doesn't contradict tool data
+- Practical tips or best practices
+- Caveats or disclaimers (e.g., "rates may vary")
+- Explaining what the data means or implications
 
 Respond in JSON format:
 {{
@@ -210,11 +218,11 @@ Respond in JSON format:
     "issues": ["issue 1", "issue 2", ...]
 }}
 
-Be strict: Even minor embellishments or unjustified claims should be flagged."""
+Only flag actual false information. Helpful advice is NOT hallucination."""
 
         try:
             result = await self.llm_client.chat_completion(
-                system_prompt="You are a strict fact-checking system. Respond only with valid JSON.",
+                system_prompt="You are a fact-checking system that identifies false claims. Helpful advice is not hallucination. Respond only with valid JSON.",
                 user_prompt=prompt,
                 temperature=0.0,
                 max_tokens=1000,

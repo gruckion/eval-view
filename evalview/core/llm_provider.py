@@ -19,6 +19,7 @@ class LLMProvider(Enum):
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
     GROK = "grok"
+    HUGGINGFACE = "huggingface"
 
 
 @dataclass
@@ -60,6 +61,13 @@ PROVIDER_CONFIGS: Dict[LLMProvider, ProviderConfig] = {
         default_model="grok-2-latest",
         display_name="xAI Grok",
         api_key_url="https://console.x.ai/",
+    ),
+    LLMProvider.HUGGINGFACE: ProviderConfig(
+        name="huggingface",
+        env_var="HF_TOKEN",
+        default_model="meta-llama/Llama-3.1-8B-Instruct",
+        display_name="Hugging Face",
+        api_key_url="https://huggingface.co/settings/tokens",
     ),
 }
 
@@ -185,6 +193,10 @@ class LLMClient:
             )
         elif self.provider == LLMProvider.GROK:
             return await self._grok_completion(
+                system_prompt, user_prompt, temperature, max_tokens
+            )
+        elif self.provider == LLMProvider.HUGGINGFACE:
+            return await self._huggingface_completion(
                 system_prompt, user_prompt, temperature, max_tokens
             )
         else:
@@ -323,6 +335,48 @@ class LLMClient:
 
         return json.loads(response.choices[0].message.content or "{}")
 
+    async def _huggingface_completion(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> Dict[str, Any]:
+        """Hugging Face Inference API chat completion (OpenAI-compatible)."""
+        from openai import AsyncOpenAI
+
+        # HF Inference Providers - unified router endpoint (2025)
+        # Routes to best available provider (Together, Fireworks, etc.)
+        client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url="https://router.huggingface.co/v1",
+        )
+
+        # Add explicit JSON instruction since not all models support response_format
+        json_instruction = "\n\nRespond with ONLY a valid JSON object, no other text."
+
+        response = await client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt + json_instruction},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        # Parse JSON from response (handle markdown code blocks)
+        text = response.choices[0].message.content or "{}"
+        text = text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+
+        return json.loads(text.strip())
+
 
 def get_missing_provider_message() -> str:
     """Generate a helpful error message when no provider is available."""
@@ -339,7 +393,7 @@ def get_missing_provider_message() -> str:
     lines.append("  [cyan]export ANTHROPIC_API_KEY='your-key-here'[/cyan]")
     lines.append("\nOr add to your .env file:")
     lines.append("  [cyan]echo 'ANTHROPIC_API_KEY=your-key-here' >> .env[/cyan]")
-    lines.append("\n[dim]Tip: Set EVAL_PROVIDER to choose a specific provider (openai, anthropic, gemini, grok)[/dim]")
+    lines.append("\n[dim]Tip: Set EVAL_PROVIDER to choose a specific provider (openai, anthropic, gemini, grok, huggingface)[/dim]")
     lines.append("[dim]Tip: Set EVAL_MODEL to use a specific model[/dim]\n")
     lines.append("Get API keys at:")
 
@@ -408,7 +462,7 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
     # Get user choice
     while True:
         try:
-            choice = console.input("[bold]Enter choice (1-4): [/bold]").strip()
+            choice = console.input("[bold]Enter choice (1-5): [/bold]").strip()
             if not choice:
                 # Default to first available provider
                 if available:
@@ -476,9 +530,9 @@ def interactive_provider_selection(console) -> Optional[Tuple[LLMProvider, str]]
                         console.print(f"\n[dim]Get your API key at: {config.api_key_url}[/dim]")
                         return None
             else:
-                console.print("[red]Invalid choice. Please enter 1-4.[/red]")
+                console.print("[red]Invalid choice. Please enter 1-5.[/red]")
         except ValueError:
-            console.print("[red]Invalid input. Please enter a number 1-4.[/red]")
+            console.print("[red]Invalid input. Please enter a number 1-5.[/red]")
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Cancelled.[/dim]")
             return None

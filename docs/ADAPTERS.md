@@ -47,6 +47,50 @@ headers:
 }
 ```
 
+### HuggingFace Adapter
+
+For Gradio-based agents hosted on HuggingFace Spaces.
+
+**Use when:**
+- Your agent is hosted on HuggingFace Spaces
+- Your agent uses Gradio for the interface
+- You want zero-config connection to HF Spaces
+
+**Configuration:**
+```yaml
+# .evalview/config.yaml
+adapter: huggingface  # or 'hf' or 'gradio'
+
+# Supports multiple URL formats:
+endpoint: username/my-space
+# OR: https://huggingface.co/spaces/username/my-space
+# OR: https://username-my-space.hf.space
+
+timeout: 120  # Longer timeout for AI inference
+```
+
+**Environment Variables:**
+```bash
+# HuggingFace token (optional for public Spaces)
+export HF_TOKEN="hf_your_token_here"
+```
+
+**Features:**
+- Auto-detects Gradio API endpoints
+- Handles Space URL normalization
+- Supports sleeping Space wake-up
+- Extracts tool calls if present in response
+
+**Example:**
+```bash
+# Connect to any HuggingFace Space
+evalview connect --adapter hf --endpoint HuggingFaceH4/zephyr-chat
+```
+
+See [QUICKSTART_HUGGINGFACE.md](QUICKSTART_HUGGINGFACE.md) for full guide.
+
+---
+
 ### Streaming Adapter
 
 For JSONL (JSON Lines) streaming APIs.

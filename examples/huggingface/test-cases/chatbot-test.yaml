@@ -1,0 +1,35 @@
+# Example test case for HuggingFace Space chatbot
+#
+# This tests a simple Q&A interaction with a chatbot.
+# Modify for your specific agent's capabilities.
+
+name: "Basic Chatbot Test"
+description: "Verify the chatbot responds correctly to simple questions"
+
+input:
+  query: "What is the capital of France?"
+
+expected:
+  # No tool calls expected for a simple chatbot
+  tools: []
+
+  output:
+    # The response should contain these keywords
+    contains:
+      - "Paris"
+
+    # The response should NOT contain these (indicates errors)
+    not_contains:
+      - "error"
+      - "I don't know"
+      - "cannot"
+
+thresholds:
+  # Minimum quality score (0-100)
+  min_score: 60
+
+  # Max latency in ms (generous for cold starts)
+  max_latency: 60000
+
+  # Max cost (usually $0 for HF free tier)
+  max_cost: 0.10

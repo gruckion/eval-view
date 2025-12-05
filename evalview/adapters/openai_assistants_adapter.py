@@ -58,10 +58,13 @@ class OpenAIAssistantsAdapter(AgentAdapter):
         assistant_id = context.get("assistant_id") or self.assistant_id or os.getenv("OPENAI_ASSISTANT_ID")
 
         if not assistant_id:
-            raise ValueError(
-                "assistant_id required. Set OPENAI_ASSISTANT_ID env var, "
-                "add to config, or include in test case context"
-            )
+            # Try to auto-create with user confirmation
+            assistant_id = await self._auto_create_assistant(client=None)
+            if not assistant_id:
+                raise ValueError(
+                    "assistant_id required. Set OPENAI_ASSISTANT_ID env var, "
+                    "add to config, or include in test case context"
+                )
 
         start_time = datetime.now()
 
@@ -207,18 +210,8 @@ class OpenAIAssistantsAdapter(AgentAdapter):
                         )
                         steps.append(step_trace)
 
-            elif step.type == "message_creation":
-                # Message creation step
-                step_trace = StepTrace(
-                    step_id=step.id,
-                    step_name="Message Creation",
-                    tool_name="message_creation",
-                    parameters={},
-                    output=None,
-                    success=True,
-                    metrics=StepMetrics(latency=step_latency, cost=0.0),
-                )
-                steps.append(step_trace)
+            # Skip message_creation - it's an internal step, not a user-facing tool
+            # Users shouldn't need to expect this in their test cases
 
         return steps
 
@@ -275,6 +268,86 @@ class OpenAIAssistantsAdapter(AgentAdapter):
             total_latency=total_latency,
             total_tokens=token_usage,
         )
+
+    async def _auto_create_assistant(self, client=None) -> Optional[str]:
+        """Auto-create an assistant with user confirmation.
+
+        Returns:
+            The created assistant_id or None if user declined
+        """
+        from rich.console import Console
+        from rich.prompt import Confirm
+
+        console = Console()
+
+        console.print("\n[yellow]No OpenAI Assistant ID found.[/yellow]")
+        console.print("\nWould you like to create one automatically?")
+        console.print("[dim]This will create an assistant with code_interpreter tool for testing.[/dim]\n")
+
+        if not Confirm.ask("[bold]Create assistant?[/bold]", default=True):
+            console.print("[dim]Skipped. Set OPENAI_ASSISTANT_ID manually to continue.[/dim]")
+            return None
+
+        try:
+            from openai import AsyncOpenAI
+
+            if client is None:
+                client = AsyncOpenAI()
+
+            console.print("\n[dim]Creating assistant...[/dim]")
+
+            # Create assistant with useful default tools
+            assistant = await client.beta.assistants.create(
+                name="EvalView Test Assistant",
+                instructions="You are a helpful assistant for testing. Use tools when appropriate to answer questions accurately.",
+                model=self.model_config.get("name", "gpt-4o"),
+                tools=[
+                    {"type": "code_interpreter"},  # For calculations, data analysis
+                ],
+            )
+
+            assistant_id = assistant.id
+
+            # Save to .env.local
+            self._save_assistant_id(assistant_id)
+
+            console.print(f"[green]✓ Created assistant: {assistant_id}[/green]")
+            console.print(f"[dim]Saved to .env.local[/dim]\n")
+
+            # Update environment for current session
+            os.environ["OPENAI_ASSISTANT_ID"] = assistant_id
+            self.assistant_id = assistant_id
+
+            return assistant_id
+
+        except Exception as e:
+            console.print(f"[red]Failed to create assistant: {e}[/red]")
+            return None
+
+    def _save_assistant_id(self, assistant_id: str) -> None:
+        """Save assistant ID to .env.local file."""
+        env_file = ".env.local"
+        line = f"OPENAI_ASSISTANT_ID={assistant_id}\n"
+
+        # Read existing content
+        existing_lines = []
+        if os.path.exists(env_file):
+            with open(env_file, "r") as f:
+                existing_lines = f.readlines()
+
+        # Remove existing OPENAI_ASSISTANT_ID line if present
+        new_lines = [l for l in existing_lines if not l.startswith("OPENAI_ASSISTANT_ID=")]
+
+        # Ensure last line ends with newline
+        if new_lines and not new_lines[-1].endswith("\n"):
+            new_lines[-1] += "\n"
+
+        # Add new assistant ID
+        new_lines.append(line)
+
+        # Write back
+        with open(env_file, "w") as f:
+            f.writelines(new_lines)
 
     async def health_check(self) -> bool:
         """Check if OpenAI API is accessible."""

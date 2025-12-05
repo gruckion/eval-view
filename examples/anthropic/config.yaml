@@ -1,0 +1,8 @@
+# Anthropic Claude Example
+# Run with: evalview run examples/anthropic
+
+adapter: anthropic
+model:
+  name: claude-sonnet-4-5-20250929
+
+# Requires ANTHROPIC_API_KEY in .env.local

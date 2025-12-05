@@ -225,6 +225,15 @@ class AdapterRegistry:
         except ImportError:
             logger.warning("AnthropicAdapter not available")
 
+        try:
+            from evalview.adapters.huggingface_adapter import HuggingFaceAdapter
+
+            cls.register("huggingface", HuggingFaceAdapter)
+            cls.register("hf", HuggingFaceAdapter)  # Alias
+            cls.register("gradio", HuggingFaceAdapter)  # Alias
+        except ImportError:
+            logger.warning("HuggingFaceAdapter not available")
+
         cls._initialized = True
 
     @classmethod
