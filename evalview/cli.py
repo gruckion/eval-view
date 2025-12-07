@@ -575,7 +575,7 @@ model:
             timeout=30.0,
             allow_private_urls=True,  # Allow localhost for demo
         )
-        evaluator = Evaluator(openai_api_key=os.getenv("OPENAI_API_KEY"))
+        evaluator = Evaluator()
 
         async def run_all_tests():
             results = []
