@@ -1,17 +1,19 @@
-# Example: Using the EvalView GitHub Action
-# Copy this workflow to your repository at .github/workflows/evalview.yml
+# =============================================================================
+# EXAMPLE WORKFLOW - Copy this to your own repository!
+# =============================================================================
+# This file demonstrates how to use the EvalView GitHub Action.
+# It is NOT meant to run in the EvalView repo itself.
 #
-# Prerequisites:
-# 1. Add OPENAI_API_KEY to your repository secrets
-# 2. Create test cases in .evalview/test-cases/
+# To use in your project:
+# 1. Copy this file to your repo at .github/workflows/evalview.yml
+# 2. Add OPENAI_API_KEY to your repository secrets
+# 3. Create test cases in .evalview/test-cases/
+# =============================================================================
 
-name: EvalView Agent Tests
+name: "[Example] EvalView Agent Tests"
 
+# This workflow only runs manually - it's a template for users to copy
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       filter:
@@ -28,7 +30,7 @@ jobs:
 
       - name: Run EvalView
         id: evalview
-        uses: hidai25/eval-view@main  # Or use a specific version tag
+        uses: hidai25/eval-view@v0.1.3
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           filter: ${{ github.event.inputs.filter }}
@@ -44,6 +46,7 @@ jobs:
           path: |
             .evalview/results/*.json
             evalview-report.html
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Comment on PR

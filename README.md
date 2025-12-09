@@ -435,7 +435,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run EvalView
-        uses: hidai25/eval-view@v1
+        uses: hidai25/eval-view@v0.1.3
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           max-workers: '4'
@@ -484,7 +484,7 @@ jobs:
 
       - name: Run EvalView
         id: evalview
-        uses: hidai25/eval-view@v1
+        uses: hidai25/eval-view@v0.1.3
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 
