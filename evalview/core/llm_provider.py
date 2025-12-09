@@ -163,7 +163,7 @@ def detect_available_providers() -> List[Tuple[LLMProvider, str]]:
     Returns:
         List of (provider, api_key) tuples for available providers.
     """
-    available = []
+    available: List[Tuple[LLMProvider, str]] = []
     for provider, config in PROVIDER_CONFIGS.items():
         if provider == LLMProvider.OLLAMA:
             # Ollama doesn't need an API key - check if it's running
