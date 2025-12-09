@@ -1490,6 +1490,20 @@ async def _run_async(
             timeout=config.get("timeout", 120.0),
             verbose=verbose,
         )
+    elif adapter_type in ["huggingface", "hf", "gradio"]:
+        # HuggingFace Spaces adapter for Gradio-based agents
+        from evalview.adapters.huggingface_adapter import HuggingFaceAdapter
+
+        adapter = HuggingFaceAdapter(
+            endpoint=config["endpoint"],
+            headers=config.get("headers", {}),
+            timeout=config.get("timeout", 120.0),
+            hf_token=os.getenv("HF_TOKEN"),
+            function_name=config.get("function_name"),
+            verbose=verbose,
+            model_config=model_config,
+            allow_private_urls=allow_private_urls,
+        )
     else:
         # HTTP adapter for standard REST APIs
         adapter = HTTPAdapter(
