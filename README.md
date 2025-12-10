@@ -123,6 +123,8 @@ Performance:
 ```
 </details>
 
+> **Useful?** [⭐ Star the repo](https://github.com/hidai25/eval-view) — takes 1 second, helps us a lot.
+
 ---
 
 ## Do I need a database?
@@ -607,6 +609,12 @@ evalview/
 
 ---
 
+### Like what you see?
+
+If EvalView caught a regression, saved you debugging time, or kept your agent costs in check — **[give it a ⭐ star](https://github.com/hidai25/eval-view)** to help others discover it.
+
+---
+
 ## Roadmap
 
 **Coming Soon:**
@@ -640,12 +648,4 @@ EvalView is open source software licensed under the [Apache License 2.0](LICENSE
 EvalView is an independent open-source project and is **not affiliated with, endorsed by, or sponsored by** LangGraph, CrewAI, OpenAI, Anthropic, or any other third party mentioned.
 All product names, logos, and brands are property of their respective owners.
 
----
-
-EvalView just stopped your agent from:
-- hallucinating tools that don't exist
-- tool-calling itself into bankruptcy
-
-→ Smash ⭐ if it saved your sanity (and your wallet) today
-
-**Ship AI agents with confidence** 🚀
+**Ship AI agents with confidence.**
