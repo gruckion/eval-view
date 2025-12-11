@@ -340,6 +340,7 @@ We're building a hosted version:
 - 🔄 **Retry logic** - Automatic retries with exponential backoff for flaky tests
 - 👀 **Watch mode** - Re-run tests automatically on file changes
 - ⚖️ **Configurable weights** - Customize scoring weights globally or per-test
+- 📊 **Statistical mode** - Run tests N times, get variance metrics and flakiness scores
 
 ---
 
@@ -428,6 +429,73 @@ Generate report from results.
 ```bash
 evalview report .evalview/results/20241118_004830.json --detailed --html report.html
 ```
+
+---
+
+## Statistical Mode (Variance Testing)
+
+LLMs are non-deterministic. A test that passes once might fail the next run. Statistical mode addresses this by running tests multiple times and using statistical thresholds for pass/fail decisions.
+
+### Enable Statistical Mode
+
+Add `variance` config to your test case:
+
+```yaml
+# tests/test-cases/my-test.yaml
+name: "My Agent Test"
+input:
+  query: "Analyze the market trends"
+
+expected:
+  tools:
+    - fetch_data
+    - analyze
+
+thresholds:
+  min_score: 70
+
+  # Statistical mode config
+  variance:
+    runs: 10           # Run test 10 times
+    pass_rate: 0.8     # 80% of runs must pass
+    min_mean_score: 70 # Average score must be >= 70
+    max_std_dev: 15    # Score std dev must be <= 15
+```
+
+### What You Get
+
+- **Pass rate** - Percentage of runs that passed
+- **Score statistics** - Mean, std dev, min/max, percentiles, confidence intervals
+- **Flakiness score** - 0 (stable) to 1 (flaky) with category labels
+- **Contributing factors** - Why the test is flaky (score variance, tool inconsistency, etc.)
+
+### Example Output
+
+```
+Statistical Evaluation: My Agent Test
+PASSED
+
+┌─ Run Summary ─────────────────────────┐
+│  Total Runs:     10                   │
+│  Passed:         8                    │
+│  Failed:         2                    │
+│  Pass Rate:      80% (required: 80%)  │
+└───────────────────────────────────────┘
+
+Score Statistics:
+  Mean:      79.86    95% CI: [78.02, 81.70]
+  Std Dev:   2.97     ▂▂▁▁▁ Low variance
+  Min:       75.5
+  Max:       84.5
+
+┌─ Flakiness Assessment ────────────────┐
+│  Flakiness Score: 0.12 ██░░░░░░░░     │
+│  Category:        low_variance        │
+│  Pass Rate:       80%                 │
+└───────────────────────────────────────┘
+```
+
+See [examples/statistical-mode-example.yaml](examples/statistical-mode-example.yaml) for a complete example.
 
 ---
 
@@ -618,7 +686,7 @@ If EvalView caught a regression, saved you debugging time, or kept your agent co
 ## Roadmap
 
 **Coming Soon:**
-- [ ] Multi-run flakiness detection
+- [x] Multi-run flakiness detection ✅
 - [ ] Multi-turn conversation testing
 - [ ] Grounded hallucination checking
 - [ ] Error compounding metrics
