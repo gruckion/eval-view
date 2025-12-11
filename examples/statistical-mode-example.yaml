@@ -1,0 +1,63 @@
+# EvalView Test Case: Statistical Mode Example
+# Demonstrates variance-aware testing for non-deterministic AI agents
+#
+# Statistical mode runs the test multiple times and computes:
+# - Pass rate across runs
+# - Score mean, std dev, percentiles
+# - Flakiness assessment
+# - Confidence intervals
+
+name: "Statistical Research Agent Test"
+description: "Test research agent with variance analysis for non-deterministic outputs"
+
+# Configure adapter
+adapter: langgraph
+endpoint: http://localhost:2024
+
+input:
+  query: "Research the latest developments in AI agents and summarize the key trends"
+  context:
+    max_steps: 5
+
+expected:
+  tools:
+    - web_search
+    - retrieve_documents
+    - summarize
+  tool_sequence:
+    - web_search
+    - retrieve_documents
+    - summarize
+  output:
+    contains:
+      - "AI"
+      - "agents"
+    not_contains:
+      - "error"
+      - "failed"
+
+thresholds:
+  min_score: 75
+  max_cost: 0.50
+  max_latency: 30000
+
+  # Statistical/Variance mode configuration
+  # When present, test runs multiple times and pass/fail is determined statistically
+  variance:
+    # Number of times to run the test (2-100, default: 10)
+    runs: 10
+
+    # Required proportion of runs that must pass (0.0-1.0, default: 0.8)
+    # e.g., 0.8 means 8/10 runs must pass for the test to be considered passing
+    pass_rate: 0.8
+
+    # Optional: Minimum mean score across all runs
+    # Ensures average performance meets a threshold
+    min_mean_score: 70
+
+    # Optional: Maximum allowed standard deviation
+    # Lower values enforce more consistent outputs
+    max_std_dev: 15
+
+    # Confidence level for statistical intervals (0.5-0.99, default: 0.95)
+    confidence_level: 0.95

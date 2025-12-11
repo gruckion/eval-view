@@ -76,6 +76,20 @@ class ScoringWeightsOverride(BaseModel):
     sequence_correctness: Optional[float] = Field(default=None, ge=0, le=1)
 
 
+class VarianceConfig(BaseModel):
+    """Configuration for statistical/variance testing mode.
+
+    When enabled, the test runs multiple times and pass/fail is determined
+    by statistical thresholds rather than a single run.
+    """
+
+    runs: int = Field(default=10, ge=2, le=100, description="Number of times to run the test")
+    pass_rate: float = Field(default=0.8, ge=0, le=1, description="Required pass rate (0.0-1.0)")
+    min_mean_score: Optional[float] = Field(default=None, ge=0, le=100, description="Minimum mean score across runs")
+    max_std_dev: Optional[float] = Field(default=None, ge=0, description="Maximum allowed standard deviation")
+    confidence_level: float = Field(default=0.95, ge=0.5, le=0.99, description="Confidence level for intervals")
+
+
 class Thresholds(BaseModel):
     """Performance thresholds for the test."""
 
@@ -85,6 +99,9 @@ class Thresholds(BaseModel):
 
     # Optional: Override global scoring weights for this test
     weights: Optional[ScoringWeightsOverride] = None
+
+    # Optional: Statistical mode configuration
+    variance: Optional[VarianceConfig] = None
 
 
 class ChecksConfig(BaseModel):
@@ -373,3 +390,66 @@ class EvaluationResult(BaseModel):
     # User-facing fields for reports
     input_query: Optional[str] = None
     actual_output: Optional[str] = None
+
+
+# ============================================================================
+# Statistical/Variance Evaluation Types
+# ============================================================================
+
+
+class StatisticalMetrics(BaseModel):
+    """Statistical metrics computed across multiple test runs."""
+
+    mean: float = Field(description="Mean value")
+    std_dev: float = Field(description="Standard deviation")
+    variance: float = Field(description="Variance (std_dev squared)")
+    min_value: float = Field(description="Minimum value")
+    max_value: float = Field(description="Maximum value")
+    median: float = Field(description="Median (50th percentile)")
+    percentile_25: float = Field(description="25th percentile")
+    percentile_75: float = Field(description="75th percentile")
+    percentile_95: float = Field(description="95th percentile")
+    confidence_interval_lower: float = Field(description="Lower bound of confidence interval")
+    confidence_interval_upper: float = Field(description="Upper bound of confidence interval")
+    confidence_level: float = Field(default=0.95, description="Confidence level used")
+
+
+class FlakinessScore(BaseModel):
+    """Flakiness assessment for a test based on variance analysis."""
+
+    score: float = Field(ge=0, le=1, description="Flakiness score (0=stable, 1=highly flaky)")
+    category: str = Field(description="stable, low_variance, moderate_variance, high_variance, flaky")
+    pass_rate: float = Field(ge=0, le=1, description="Proportion of runs that passed")
+    score_coefficient_of_variation: float = Field(description="CV of scores (std_dev/mean)")
+    output_consistency: Optional[float] = Field(default=None, description="How consistent outputs are (0-1)")
+    contributing_factors: List[str] = Field(default_factory=list, description="Factors contributing to flakiness")
+
+
+class StatisticalEvaluationResult(BaseModel):
+    """Complete statistical evaluation result for a test case run multiple times."""
+
+    test_case: str
+    passed: bool = Field(description="Whether the test passed statistical thresholds")
+    total_runs: int = Field(description="Number of test executions")
+    successful_runs: int = Field(description="Number of runs that passed individually")
+    failed_runs: int = Field(description="Number of runs that failed individually")
+
+    # Statistical metrics for key measures
+    score_stats: StatisticalMetrics = Field(description="Statistics for overall scores")
+    cost_stats: Optional[StatisticalMetrics] = Field(default=None, description="Statistics for cost")
+    latency_stats: Optional[StatisticalMetrics] = Field(default=None, description="Statistics for latency")
+
+    # Flakiness assessment
+    flakiness: FlakinessScore = Field(description="Flakiness assessment")
+
+    # Pass/fail reasoning
+    pass_rate: float = Field(ge=0, le=1, description="Proportion of individual runs that passed")
+    required_pass_rate: float = Field(ge=0, le=1, description="Required pass rate threshold")
+    failure_reasons: List[str] = Field(default_factory=list, description="Reasons for statistical failure")
+
+    # Individual run results (for detailed analysis)
+    individual_results: List[EvaluationResult] = Field(default_factory=list, description="Results from each run")
+
+    # Metadata
+    timestamp: datetime = Field(description="When the statistical evaluation completed")
+    variance_config: VarianceConfig = Field(description="Configuration used for this evaluation")
