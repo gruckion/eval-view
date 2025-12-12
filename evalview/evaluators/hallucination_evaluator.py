@@ -3,6 +3,7 @@
 Supports multiple LLM providers: OpenAI, Anthropic, Gemini, and Grok.
 """
 
+from datetime import datetime
 from typing import Optional, Tuple, List
 
 from evalview.core.types import (
@@ -126,9 +127,20 @@ class HallucinationEvaluator:
         confidence = fact_check_result.get("confidence", 0.0) if has_hallucination else 1.0
 
         if has_hallucination:
+            # Check if the issue is due to missing tool output
+            tools_missing_output = [
+                step.tool_name for step in trace.steps
+                if step.output is None or str(step.output) in ("None", "", "null")
+            ]
+
             details = "Potential hallucinations detected:\n" + "\n".join(
                 f"- {issue}" for issue in all_issues
             )
+
+            # Add context about why this might be flagged
+            if tools_missing_output:
+                details += f"\n\n⚠️  Note: Tool output was not captured for: {', '.join(tools_missing_output)}. "
+                details += "The agent may have used real data, but EvalView couldn't verify it because the tool results weren't captured in the trace."
         else:
             details = "No hallucinations detected. Output appears factually consistent."
 
@@ -197,7 +209,12 @@ class HallucinationEvaluator:
                 }
             )
 
+        # Include current date so the LLM knows what "today" means
+        current_date = datetime.now().strftime("%B %d, %Y")
+
         prompt = f"""You are a fact-checking system evaluating if an AI agent's response contains hallucinations.
+
+IMPORTANT: Today's date is {current_date}. Use this to determine if date references are current or not.
 
 Query: {test_case.input.query}
 
@@ -254,14 +271,21 @@ Only flag actual false information. Helpful advice is NOT hallucination."""
     def _format_tool_results(self, tool_results: list) -> str:
         """Format tool results for LLM prompt."""
         if not tool_results:
-            return "(No tools were used)"
+            return "(No tools were used - any specific claims should be flagged as unverifiable)"
 
         formatted = []
         for i, result in enumerate(tool_results, 1):
+            output = result['output']
+            # Flag when tool output wasn't captured
+            if output in (None, "None", "", "null"):
+                output_str = "(Tool output not captured - any claims about this tool's results are unverifiable)"
+            else:
+                output_str = output
+
             formatted.append(
                 f"{i}. {result['tool']}({result['input']})\n"
                 f"   Success: {result['success']}\n"
-                f"   Output: {result['output']}\n"
+                f"   Output: {output_str}\n"
                 f"   Error: {result['error'] or 'None'}"
             )
 

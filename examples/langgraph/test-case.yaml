@@ -1,36 +1,29 @@
-# EvalView Test Case: LangGraph Research Agent
-# Tests a multi-step research workflow
+# EvalView Test Case: LangGraph Agent with Tavily Search
+# Tests a LangGraph agent that uses Tavily for web search
 
-name: "LangGraph Research Agent"
-description: "Test research agent's ability to search and synthesize information"
+name: "LangGraph Tavily Search Agent"
+description: "Test LangGraph agent's ability to search and answer questions using Tavily"
 
 # Configure adapter for LangGraph
 adapter: langgraph
 endpoint: http://localhost:2024
 
 input:
-  query: "Research the latest developments in AI agents and summarize the key trends"
+  query: "What is the weather in San Francisco today?"
   context:
     max_steps: 5
 
 expected:
   tools:
-    - web_search
-    - retrieve_documents
-    - summarize
-  tool_sequence:
-    - web_search
-    - retrieve_documents
-    - summarize
+    - tavily_search_results_json
   output:
     contains:
-      - "AI"
-      - "agents"
+      - "San Francisco"
     not_contains:
       - "error"
       - "failed"
 
 thresholds:
-  min_score: 80
+  min_score: 70
   max_cost: 0.50
   max_latency: 30000

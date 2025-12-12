@@ -178,6 +178,24 @@ class LangGraphAdapter(AgentAdapter):
                                         if not isinstance(msg, dict):
                                             continue
 
+                                        msg_type = msg.get("type", "")
+
+                                        # Handle tool result messages (type: "tool")
+                                        if msg_type == "tool":
+                                            tool_call_id = msg.get("tool_call_id")
+                                            tool_content = msg.get("content", "")
+
+                                            # Find the matching tool call and update its output
+                                            for step in steps:
+                                                if step.step_id == tool_call_id:
+                                                    step.output = tool_content
+                                                    if self.verbose:
+                                                        logger.debug(
+                                                            f"📥 Tool result for {step.tool_name}: {str(tool_content)[:100]}..."
+                                                        )
+                                                    break
+                                            continue
+
                                         # Extract final output from last AI message
                                         content = msg.get("content", "")
                                         if content and isinstance(content, str):
@@ -202,7 +220,7 @@ class LangGraphAdapter(AgentAdapter):
                                                     step_name=f"Call {tool_name}",
                                                     tool_name=tool_name,
                                                     parameters=tool_call.get("args", {}),
-                                                    output=None,  # Tool results come in separate messages
+                                                    output=None,  # Will be filled when tool result arrives
                                                     success=True,
                                                     metrics=StepMetrics(latency=0.0, cost=0.0),
                                                 )
