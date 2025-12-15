@@ -42,10 +42,10 @@ EvalView is a **testing framework for AI agents**.
 
 It lets you:
 
-- 🧪 **Write tests in YAML** that describe inputs, expected tools, and acceptance thresholds
-- 🔁 **Turn real conversations into regression suites** (record → generate tests → re-run on every change)
-- 🚦 **Gate deployments in CI** on behavior, tool calls, cost, and latency
-- 🧩 Plug into **LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HTTP agents**, and more
+- **Write tests in YAML** that describe inputs, expected tools, and acceptance thresholds
+- **Turn real conversations into regression suites** (record → generate tests → re-run on every change)
+- **Gate deployments in CI** on behavior, tool calls, cost, and latency
+- Plug into **LangGraph, CrewAI, OpenAI Assistants, Anthropic Claude, HTTP agents**, and more
 
 Think: _"pytest / Playwright mindset, but for multi-step agents and tool-calling workflows."_
 
@@ -122,10 +122,10 @@ evalview quickstart
 
 You'll see a full run with:
 
-- ✅ A demo agent spinning up
-- ✅ A test case created for you
-- ✅ A config file wired up
-- 📊 A scored test: tools used, output quality, cost, latency
+- A demo agent spinning up
+- A test case created for you
+- A config file wired up
+- A scored test: tools used, output quality, cost, latency
 
 ### Run examples directly (no config needed)
 
@@ -259,10 +259,10 @@ Database config is optional – EvalView only uses it if you enable it in config
 
 ## Why EvalView?
 
-- 🔓 **Fully Open Source** – Apache 2.0 licensed, runs entirely on your infra, no SaaS lock-in
-- 🔌 **Framework-agnostic** – Works with LangGraph, CrewAI, OpenAI, Anthropic, or any HTTP API
-- 🚀 **Production-ready** – Parallel execution, CI/CD integration, configurable thresholds
-- 🧩 **Extensible** – Custom adapters, evaluators, and reporters for your stack
+- **Fully Open Source** – Apache 2.0 licensed, runs entirely on your infra, no SaaS lock-in
+- **Framework-agnostic** – Works with LangGraph, CrewAI, OpenAI, Anthropic, or any HTTP API
+- **Production-ready** – Parallel execution, CI/CD integration, configurable thresholds
+- **Extensible** – Custom adapters, evaluators, and reporters for your stack
 
 ---
 
@@ -357,7 +357,7 @@ $ evalview run
 
 ---
 
-## 🚀 Generate 1000 Tests from 1
+## Generate 1000 Tests from 1
 
 **Problem:** Writing tests manually is slow. You need volume to catch regressions.
 
@@ -387,9 +387,9 @@ evalview record --interactive
 ```
 
 EvalView captures:
-- ✅ Query → Tools called → Output
-- ✅ Auto-generates test YAML
-- ✅ Adds reasonable thresholds
+- Query → Tools called → Output
+- Auto-generates test YAML
+- Adds reasonable thresholds
 
 **Result:** Go from 5 manual tests → 500 comprehensive tests in minutes.
 
@@ -411,40 +411,40 @@ evalview run
 ```
 
 Supports 7+ frameworks with automatic detection:
-✅ LangGraph • ✅ CrewAI • ✅ OpenAI Assistants • ✅ Anthropic Claude • ✅ AutoGen • ✅ Dify • ✅ Custom APIs
+LangGraph • CrewAI • OpenAI Assistants • Anthropic Claude • AutoGen • Dify • Custom APIs
 
 ---
 
-## ☁️ EvalView Cloud (Coming Soon)
+## EvalView Cloud (Coming Soon)
 
 We're building a hosted version:
 
-- 📊 **Dashboard** - Visual test history, trends, and pass/fail rates
-- 👥 **Teams** - Share results and collaborate on fixes
-- 🔔 **Alerts** - Slack/Discord notifications on failures
-- 📈 **Regression detection** - Automatic alerts when performance degrades
-- ⚡ **Parallel runs** - Run hundreds of tests in seconds
+- **Dashboard** - Visual test history, trends, and pass/fail rates
+- **Teams** - Share results and collaborate on fixes
+- **Alerts** - Slack/Discord notifications on failures
+- **Regression detection** - Automatic alerts when performance degrades
+- **Parallel runs** - Run hundreds of tests in seconds
 
-👉 **[Join the waitlist](https://form.typeform.com/to/EQO2uqSa)** - be first to get access
+**[Join the waitlist](https://form.typeform.com/to/EQO2uqSa)** - be first to get access
 
 ---
 
 ## Features
 
-- 🚀 **Test Expansion** - Generate 100+ test variations from a single seed test
-- 🎥 **Test Recording** - Auto-generate tests from live agent interactions
-- ✅ **YAML-based test cases** - Write readable, maintainable test definitions
-- ⚡ **Parallel execution** - Run tests concurrently (8x faster by default)
-- 📊 **Multiple evaluation metrics** - Tool accuracy, sequence correctness, output quality, cost, and latency
-- 🤖 **LLM-as-judge** - Automated output quality assessment
-- 💰 **Cost tracking** - Automatic cost calculation based on token usage
-- 🔌 **Universal adapters** - Works with any HTTP or streaming API
-- 🎨 **Rich console output** - Beautiful, informative test results
-- 📁 **JSON & HTML reports** - Interactive HTML reports with Plotly charts
-- 🔄 **Retry logic** - Automatic retries with exponential backoff for flaky tests
-- 👀 **Watch mode** - Re-run tests automatically on file changes
-- ⚖️ **Configurable weights** - Customize scoring weights globally or per-test
-- 📊 **Statistical mode** - Run tests N times, get variance metrics and flakiness scores
+- **Test Expansion** - Generate 100+ test variations from a single seed test
+- **Test Recording** - Auto-generate tests from live agent interactions
+- **YAML-based test cases** - Write readable, maintainable test definitions
+- **Parallel execution** - Run tests concurrently (8x faster by default)
+- **Multiple evaluation metrics** - Tool accuracy, sequence correctness, output quality, cost, and latency
+- **LLM-as-judge** - Automated output quality assessment
+- **Cost tracking** - Automatic cost calculation based on token usage
+- **Universal adapters** - Works with any HTTP or streaming API
+- **Rich console output** - Beautiful, informative test results
+- **JSON & HTML reports** - Interactive HTML reports with Plotly charts
+- **Retry logic** - Automatic retries with exponential backoff for flaky tests
+- **Watch mode** - Re-run tests automatically on file changes
+- **Configurable weights** - Customize scoring weights globally or per-test
+- **Statistical mode** - Run tests N times, get variance metrics and flakiness scores
 
 ---
 
