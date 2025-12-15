@@ -55,13 +55,13 @@ Think: _"pytest / Playwright mindset, but for multi-step agents and tool-calling
 
 | | Manual Testing | EvalView |
 |---|---|---|
-| Catches hallucinations | ❌ No | ✅ Yes |
-| Tracks token cost | ❌ No | ✅ Automatic |
-| Runs in CI/CD | ❌ Hard | ✅ Built-in |
-| Detects regressions | ❌ No | ✅ Automatic |
-| Tests tool calls | ❌ Manual inspection | ✅ Automated |
-| Latency tracking | ❌ No | ✅ Per-test thresholds |
-| Handles flaky LLMs | ❌ No | ✅ Statistical mode |
+| Catches hallucinations | No | **Yes** |
+| Tracks token cost | No | **Automatic** |
+| Runs in CI/CD | Hard | **Built-in** |
+| Detects regressions | No | **Automatic** |
+| Tests tool calls | Manual inspection | **Automated** |
+| Latency tracking | No | **Per-test thresholds** |
+| Handles flaky LLMs | No | **Statistical mode** |
 
 ---
 
