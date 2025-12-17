@@ -49,6 +49,8 @@ It lets you:
 
 Think: _"pytest / Playwright mindset, but for multi-step agents and tool-calling workflows."_
 
+> **Note:** LLM-as-judge evaluations are probabilistic. Results may vary between runs. Use [Statistical Mode](#statistical-mode-variance-testing) for reliable pass/fail decisions.
+
 ---
 
 ## EvalView vs Manual Testing
