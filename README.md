@@ -456,11 +456,8 @@ We're building a hosted version:
 ## Installation
 
 ```bash
-# Basic installation
+# Install (includes skills testing)
 pip install evalview
-
-# With skills testing (Claude Code / Codex)
-pip install evalview[skills]
 
 # With HTML reports (Plotly charts)
 pip install evalview[reports]
@@ -793,7 +790,7 @@ evalview/
 
 **The first CI/CD testing framework for AI agent skills.**
 
-Skills are the new plugins. With 25k+ skills on marketplaces and enterprises deploying to thousands of employees, skills need the same testing rigor as any other code.
+Skills are the new plugins. With thousands of skills on marketplaces and enterprises deploying skills to employees, they need the same testing rigor as any other code.
 
 EvalView lets you validate skill structure and test skill behavior **automatically on every commit**—before your skill reaches users.
 
@@ -946,31 +943,6 @@ Summary: ✓
   Total tokens: 3,847
 ```
 
-### Add to CI
-
-Block bad skills before they reach users:
-
-```yaml
-# .github/workflows/skills.yml
-name: Skill Tests
-on: [push, pull_request]
-
-jobs:
-  test-skills:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: pip install evalview
-
-      # Validate structure
-      - run: evalview skill validate ./skills/ -r --strict
-
-      # Test behavior
-      - run: evalview skill test ./tests/skills/*.yaml
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
 ### Why Test Skills?
 
 **You can test skills manually in Claude Code. So why use EvalView?**
@@ -987,7 +959,7 @@ Manual testing works for development. EvalView is for **automation**:
 
 **Who needs automated skill testing?**
 
-- **Skill authors** publishing to marketplaces (25k+ skills on SkillsMP)
+- **Skill authors** publishing to marketplaces
 - **Enterprise teams** rolling out skills to thousands of employees
 - **Open source maintainers** accepting contributions from the community
 - **Anyone** who wants CI/CD for their skills
